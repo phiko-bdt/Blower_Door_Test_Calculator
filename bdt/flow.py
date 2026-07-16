@@ -13,6 +13,7 @@ from bdt.pages import (
     LivePressureData,
     ProgressPage,
     LiveMeasurementChart,
+    CalculationSummary,
 )
 from bdt.tasks import BackgroundTask
 
@@ -64,6 +65,7 @@ class TestFlow(QObject):
         super().__init__()
         self.window = window
         self.task = None      # 실행 중인 백그라운드 작업 (GC 방지용 참조)
+        self.summary = None   # 계산 결과 화면 (그래프·성적서 동안 유지된다)
         self.data = {}
         self.steps = []
         self.pending = []
@@ -122,13 +124,38 @@ class TestFlow(QObject):
         self.data["test_period"] = f"{self.time_start}~{time_end}"
         with open(paths.CONDITIONS_JSON, "w") as file:
             json.dump(self.data, file, indent=4)
-        self.run_task("calculation", "시험 결과를 계산하는 중…", "계산", self.run_graph)
+        self.run_task("calculation", "시험 결과를 계산하는 중…", "계산",
+                      self.show_summary)
 
-    def run_graph(self):
-        self.run_task("graph_plotting", "그래프를 그리는 중…", "계산", self.run_report)
+    def show_summary(self):
+        """계산 결과를 띄우고, 그 화면을 유지한 채 그래프·성적서를 만든다.
+
+        계산은 0.04초면 끝나지만 그래프·성적서는 도합 18초쯤 걸린다. 예전엔
+        그 시간에 "그리는 중…" 한 줄만 떠 있었다. 이제 그동안 실제 계산 값을
+        한 줄씩 내보여, 없는 지연을 만들지 않고도 볼 것을 준다.
+        """
+        with open(paths.CALCULATION_RAW_JSON, 'r') as file:
+            report = json.load(file).get("report", {})
+
+        self.summary = CalculationSummary(report, self.data)
+        self.window.show_page(self.summary, step=self.steps.index("계산"))
+        self.summary.start()
+        # 결과를 읽는 동안 뒤에서 그래프를 만든다
+        self.run_background("graph_plotting", "그래프를 그리는 중…", self.run_report)
 
     def run_report(self):
-        self.run_task("reporting", "성적서를 만드는 중…", "성적서", self.done)
+        # 같은 결과 화면을 유지한 채 단계 표시만 '성적서' 로 옮긴다
+        self.window.header.set_current(self.steps.index("성적서"))
+        self.run_background("reporting", "성적서를 만드는 중…", self.done)
+
+    def run_background(self, kind, status, on_done):
+        """결과 화면을 그대로 둔 채 백그라운드 작업만 실행한다."""
+        self.summary.set_progress(status)
+        task = BackgroundTask(kind)
+        task.progress.connect(self.summary.set_progress)
+        task.finished.connect(on_done)
+        self.task = task
+        task.start()
 
     def run_task(self, kind, title, step_name, on_done):
         """진행 페이지를 띄우고 백그라운드 작업을 실행한 뒤 다음 단계로 넘긴다."""
@@ -141,7 +168,7 @@ class TestFlow(QObject):
         task.start()
 
     def done(self):
-        # 끝난 화면이라 진행 막대는 돌리지 않는다
-        page = ProgressPage("시험이 모두 끝났습니다", done=True)
-        page.set_progress("성적서(report.pdf)가 화면에 표시됩니다.")
-        self.window.show_page(page, step=len(self.steps) - 1)
+        # 결과 화면을 그대로 두고 끝났음만 알린다. 성적서 PDF 가 위에 떠서
+        # 화면을 가리므로, 닫으면 결과가 그대로 남아 있는 편이 낫다.
+        self.summary.set_progress("시험 완료 — 성적서(report.pdf)가 화면에 표시됩니다.")
+        self.summary.set_done()

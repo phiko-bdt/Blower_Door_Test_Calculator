@@ -1,5 +1,6 @@
 import os
 import json
+import shutil
 import math
 import numpy as np
 import matplotlib
@@ -156,13 +157,16 @@ def plot_graph(resultsd, resultsp, report):
 
     fig.tight_layout(pad=0.6, w_pad=1.6)
 
-    # 백업 + 사용 그래프 저장
-    now = datetime.now().strftime("%d%m%Y-%H%M%S")
-    graphs_dir = paths.ensure_dir(paths.GRAPHS_DIR)
-    fig.savefig(os.path.join(graphs_dir, f"graph_{now}.png"), dpi=300, bbox_inches="tight",
-                facecolor="white")
+    # 사용 그래프 저장 후 이력본은 파일 복사로 남긴다.
+    # 예전엔 같은 그림을 300dpi 로 두 번 렌더했는데, 인자가 완전히 같아
+    # 결과 파일도 같았다. 라즈베리파이에서 300dpi 저장 한 번이 수 초라
+    # 그래프 단계 시간이 그만큼 그냥 두 배였다.
     fig.savefig(paths.GRAPH_PNG, dpi=300, bbox_inches="tight", facecolor="white")
     plt.close(fig)
+
+    now = datetime.now().strftime("%d%m%Y-%H%M%S")
+    graphs_dir = paths.ensure_dir(paths.GRAPHS_DIR)
+    shutil.copyfile(paths.GRAPH_PNG, os.path.join(graphs_dir, f"graph_{now}.png"))
 
 
 if __name__ == "__main__":

@@ -146,6 +146,41 @@ QLabel#Message {{
     font-weight: bold;
     color: {COLOR_INK};
 }}
+/* 계산 결과 브리핑 — 성적서 상세표와 같은 짜임 */
+QLabel#Formula {{
+    font-size: 24px;
+    font-weight: bold;
+    color: {COLOR_ACCENT};
+}}
+QLabel#SummaryName {{
+    font-size: 14px;
+    color: {COLOR_SUB};
+}}
+QLabel#SummaryValue {{
+    font-size: 17px;
+    font-weight: bold;
+    color: {COLOR_INK};
+}}
+QLabel#SummaryEmphasisName {{
+    font-size: 14px;
+    font-weight: bold;
+    color: {COLOR_ACCENT};
+}}
+QLabel#SummaryEmphasisValue {{
+    font-size: 30px;
+    font-weight: bold;
+    color: {COLOR_INK};
+}}
+QLabel#SummaryUnit {{
+    font-size: 12px;
+    color: {COLOR_MUTED};
+    padding-bottom: 3px;
+}}
+/* 아직 계산되기 전인 값 자리 */
+QLabel#SummaryPending {{
+    font-size: 17px;
+    color: {COLOR_LINE};
+}}
 QLabel#FieldLabel {{
     font-size: 14px;
     color: {COLOR_SUB};
