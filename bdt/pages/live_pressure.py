@@ -17,10 +17,10 @@ from bdt.config import TEST_MODE
 from bdt.scale import padded_range
 from bdt.theme import (
     COLOR_DEP,
+    COLOR_INK,
     COLOR_SUB,
-    COLOR_MUTED,
-    COLOR_LINE,
-    COLOR_LINE2,
+    COLOR_CHART_GRID,
+    COLOR_CHART_GRID_SOFT,
     COLOR_PLOT,
 )
 
@@ -63,7 +63,7 @@ class LivePressureData(QWidget):
         chart_title_font.setPointSize(11)
         chart_title_font.setBold(True)
         self.chart.setTitleFont(chart_title_font)
-        self.chart.setTitleBrush(QColor(COLOR_SUB))
+        self.chart.setTitleBrush(QColor(COLOR_INK))
         self.chart.setTitle("실시간 압력")
 
         # x, y 축 생성
@@ -81,15 +81,16 @@ class LivePressureData(QWidget):
         axis_font.setPointSize(9)
         title_font = QFont()
         title_font.setPointSize(9)
-        # 격자·축선은 표면에서 한 톤만 떨어뜨려 뒤로 물린다 (데이터가 주인공).
+        # 격자는 데이터 뒤로 물리되 화면에서 보이는 정도는 유지한다.
+        # 글자색은 성적서 그래프와 같은 단계 (축 제목 INK, 틱 라벨 SUB).
         for ax in (self.axis_x, self.axis_y):
             ax.setLabelsFont(axis_font)
             ax.setTitleFont(title_font)
-            ax.setGridLineColor(QColor(COLOR_LINE))
-            ax.setMinorGridLineColor(QColor(COLOR_LINE2))
-            ax.setLinePenColor(QColor(COLOR_LINE))
-            ax.setLabelsColor(QColor(COLOR_MUTED))
-            ax.setTitleBrush(QColor(COLOR_SUB))
+            ax.setGridLineColor(QColor(COLOR_CHART_GRID))
+            ax.setMinorGridLineColor(QColor(COLOR_CHART_GRID_SOFT))
+            ax.setLinePenColor(QColor(COLOR_CHART_GRID))
+            ax.setLabelsColor(QColor(COLOR_SUB))
+            ax.setTitleBrush(QColor(COLOR_INK))
             ax.setShadesVisible(False)
         self.axis_x.setTickCount(5)
         self.axis_x.setLabelFormat("%.0f")  # 초 단위에 소수점은 잡음이다

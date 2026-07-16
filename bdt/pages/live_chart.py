@@ -39,13 +39,15 @@ class LiveMeasurementChart(QWidget):
                            theme.COLOR_PRE),
     }
 
-    # 색은 bdt.theme 이 단일 소스 (recessive 그리드 + 또렷한 데이터)
+    # 색은 bdt.theme 이 단일 소스 (recessive 그리드 + 또렷한 데이터).
+    # 글자색은 성적서 그래프와 같은 단계를 쓴다: 제목·축 제목은 INK,
+    # 틱 라벨은 SUB. (SUB 는 표면 대비 5.70:1 로 작은 글씨 AA 를 넘긴다.
+    # 예전에 쓰던 MUTED 는 3.00:1 로 미달이라 현장에서 읽기 어려웠다.)
     C_SURFACE = theme.COLOR_PLOT        # plot 배경
-    C_INK = theme.COLOR_INK             # 제목·축 제목
-    C_INK_SUB = theme.COLOR_SUB         # 축 제목 보조
-    C_TICK = theme.COLOR_MUTED          # 틱 라벨
-    C_GRID_MAJOR = theme.COLOR_LINE     # 주 격자
-    C_GRID_MINOR = theme.COLOR_GRID_MINOR  # 보조 격자
+    C_INK = theme.COLOR_INK             # 차트 제목·축 제목
+    C_TICK = theme.COLOR_SUB            # 틱 라벨
+    C_GRID_MAJOR = theme.COLOR_CHART_GRID       # 주 격자·축선 (화면용)
+    C_GRID_MINOR = theme.COLOR_CHART_GRID_SOFT  # 보조 격자 (화면용)
     C_CROSSHAIR = theme.COLOR_CROSSHAIR    # 50 Pa 기준선 (성적서와 같은 색)
     C_CURSOR = theme.COLOR_CURSOR          # 현재 위치 십자 포인터
 
@@ -101,13 +103,13 @@ class LiveMeasurementChart(QWidget):
         title_font.setPointSize(11)
         title_font.setBold(True)
         self.chart.setTitleFont(title_font)
-        self.chart.setTitleBrush(QColor(self.C_INK_SUB))
+        self.chart.setTitleBrush(QColor(self.C_INK))
         self.chart.legend().setVisible(True)
         self.chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
         legend_font = QFont()
         legend_font.setPointSize(10)
         self.chart.legend().setFont(legend_font)
-        self.chart.legend().setLabelColor(QColor(self.C_INK_SUB))
+        self.chart.legend().setLabelColor(QColor(self.C_TICK))
         # 범례 마커를 시리즈 마커 모양(원/사각)과 같게 해 색·모양이 함께 식별되도록 한다
         self.chart.legend().setMarkerShape(
             QLegend.MarkerShape.MarkerShapeFromSeries)
@@ -139,7 +141,7 @@ class LiveMeasurementChart(QWidget):
             ax.setLabelsFont(axis_font)
             ax.setTitleFont(title_ax_font)
             ax.setLabelsColor(QColor(self.C_TICK))
-            ax.setTitleBrush(QColor(self.C_INK_SUB))
+            ax.setTitleBrush(QColor(self.C_INK))
             ax.setGridLineColor(QColor(self.C_GRID_MAJOR))
             # 주 눈금 사이 보조선 1개 — 주선보다 더 연하게 깔아 눈금 감각만 준다
             ax.setMinorTickCount(1)
