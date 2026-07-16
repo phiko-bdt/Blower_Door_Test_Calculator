@@ -89,9 +89,11 @@ class BlowerDoorTestCalculator:
         self.intercept_rev = coeff["reverse"]["intercept"]
         # 풍량 측정 값 저장
         # measured_value 의 각 항목은 [dp(압력차 ∆P), duty(PWM 듀티)] 이다.
+        # 감압 시험은 음압이라 dp 가 음수로 기록되지만, 기밀 계산은 압력차의
+        # 크기(|∆P|)로 이루어지므로 절대값을 취한다. (음수면 log 계산이 실패한다)
         # 팬 방향에 따라 관계식이 달라지므로 시험 종류(감압/가압)로 계수를 고른다.
         self.test = measured_data.get("test")
-        self.measured_values = [[dp, duty_to_flow(duty, coeff, self.num_fans, self.test)]
+        self.measured_values = [[abs(dp), duty_to_flow(duty, coeff, self.num_fans, self.test)]
                                 for dp, duty in measured_data["measured_value"]]
 
 

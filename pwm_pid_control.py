@@ -82,8 +82,12 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
         duty_real = duty_transformation(duty, duty_min, duty_max)
         # duty 값 적용
         sensor_and_controller.duty_set(duty_real, test=False)
-        # 압력 변화 대기
-        time.sleep(delay)
+        # 압력 변화를 기다리는 동안(delay) 압력을 짧은 주기로 읽어 실시간 위치를 갱신한다.
+        # (기존엔 delay 만큼 통째로 sleep 해서 그래프가 delay 마다 한 번만 움직였다)
+        deadline = time.time() + delay
+        while time.time() < deadline:
+            live = abs(sensor_and_controller.pressure_read(0.1, test=test))
+            notify_point(duty_real, live)
         # 압력 값 측정
         current = abs(sensor_and_controller.pressure_read(average_time, test=test))
         # duty의 이동 평균 계산

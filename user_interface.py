@@ -898,6 +898,34 @@ class BackgroundTask(QThread):
         if flow is not None:
             self.position.emit(flow, abs(pressure))
 
+    def _read_pressure(self, average_time):
+        """압력을 한 번 읽는다. 센서가 끊기면 None."""
+        try:
+            return sensor_and_controller.pressure_read(
+                average_time=average_time, test=test_mode)
+        except sensor_and_controller.SensorTimeout as exc:
+            print(exc)
+            return None
+
+    def live_wait(self, duty, seconds):
+        """seconds 동안 대기하면서 현재 압력을 십자 포인터로 실시간 갱신한다."""
+        deadline = time.time() + seconds
+        while time.time() < deadline:
+            p = self._read_pressure(0.1)
+            if p is not None:
+                self.report_position(duty, p)
+
+    def live_measure(self, duty, seconds):
+        """seconds 동안 압력을 읽어 평균을 반환하며, 그 사이 십자도 실시간 갱신한다."""
+        samples = []
+        deadline = time.time() + seconds
+        while time.time() < deadline:
+            p = self._read_pressure(0.3)
+            if p is not None:
+                samples.append(p)
+                self.report_position(duty, p)
+        return sum(samples) / len(samples) if samples else 0.0
+
     def run(self):
         try:
             if self.task_type == "depressurization":
@@ -1014,9 +1042,10 @@ class BackgroundTask(QThread):
                 sensor_and_controller.duty_set(d, test=test_mode)
                 settle = abs(before - d)
                 self.report(f"[{i}/{total}] 팬 세기 {d}% — 압력 안정화 대기 중… ({settle}초)")
-                time.sleep(settle)
+                # 대기·측정 내내 실시간으로 십자 포인터를 갱신한다
+                self.live_wait(d, settle)
                 self.report(f"[{i}/{total}] 팬 세기 {d}% — 압력 측정 중… (10초)")
-                p = self.measuring_pressure(10, 1)
+                p = self.live_measure(d, 10)
                 self.report(f"[{i}/{total}] 팬 세기 {d}% — 측정 완료: {p:.1f} Pa")
                 measuring["measured_value"].append([p, d])
                 self.report_point(d, p)
