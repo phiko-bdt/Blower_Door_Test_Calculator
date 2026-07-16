@@ -25,6 +25,16 @@ DEFAULT_COEFFICIENTS = {
 }
 
 
+def duty_to_flow(duty, coeff, num_fans=1, test=None):
+    """PWM duty(20~100%)를 풍량(㎥/h)으로 변환한다.
+
+    팬 방향에 따라 관계식이 다를 수 있으므로 시험 종류로 계수를 고른다.
+    (감압 = reverse, 가압 = forward)
+    """
+    side = "forward" if test == "pressurization" else "reverse"
+    return (coeff[side]["slope"] * duty + coeff[side]["intercept"]) * num_fans
+
+
 def load_fan_coefficients(file_path="fan_coefficients.json"):
     """Load fan calibration coefficients from a JSON file."""
     coeffs = {k: v.copy() for k, v in DEFAULT_COEFFICIENTS.items()}
@@ -78,10 +88,11 @@ class BlowerDoorTestCalculator:
         self.slope_rev = coeff["reverse"]["slope"]
         self.intercept_rev = coeff["reverse"]["intercept"]
         # 풍량 측정 값 저장
-        self.measured_values = [[i, (self.slope_fwd * j + self.intercept_fwd) * self.num_fans]
-                                if j < 50 else
-                                [i, (self.slope_rev * j + self.intercept_rev) * self.num_fans]
-                                for i, j in measured_data["measured_value"]]
+        # measured_value 의 각 항목은 [dp(압력차 ∆P), duty(PWM 듀티)] 이다.
+        # 팬 방향에 따라 관계식이 달라지므로 시험 종류(감압/가압)로 계수를 고른다.
+        self.test = measured_data.get("test")
+        self.measured_values = [[dp, duty_to_flow(duty, coeff, self.num_fans, self.test)]
+                                for dp, duty in measured_data["measured_value"]]
 
 
     @classmethod
@@ -285,6 +296,7 @@ if __name__ == '__main__':
         results_depr = depressureization.calculate_results()
         # Raw data 저장
         now = datetime.now().strftime("%d%m%Y-%H%M%S")
+        os.makedirs("calculations", exist_ok=True)
         with open(f"./calculations/depressurization_{now}.json", 'w') as file:
             json.dump(results_depr, file, indent=4)
         # 결과 값 변수 저장
@@ -306,6 +318,7 @@ if __name__ == '__main__':
         results_pres = pressureization.calculate_results()
         # Raw data 저장
         now = datetime.now().strftime("%d%m%Y-%H%M%S")
+        os.makedirs("calculations", exist_ok=True)
         with open(f"./calculations/pressurization_{now}.json", 'w') as file:
             json.dump(results_pres, file, indent=4)
         # 결과 값 변수 저장

@@ -67,6 +67,8 @@ depressurization_raw.json
 pressurization_raw.json
 raspberrypi.txt
 report_*.xlsx
+# 단, 보고서 템플릿은 입력 파일이므로 추적 대상 (생성된 보고서가 아님)
+!report_template.xlsx
 graph.png
 test.py
 test_set/

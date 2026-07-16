@@ -1,7 +1,9 @@
+import os
 import json
 import shutil
 import openpyxl
 from openpyxl.drawing.image import Image as XlsxImage
+from openpyxl.worksheet.properties import PageSetupProperties
 from datetime import datetime
 
 class ReportMaker:
@@ -34,6 +36,7 @@ class ReportMaker:
                     report[i] = f"{j:.2f}"
 
         now = datetime.now().strftime("%d%m%Y-%H%M%S")
+        os.makedirs("reports", exist_ok=True)
         with open(f'./reports/report_{now}.json', 'w') as file:
             json.dump(report, file, indent=4)
 
@@ -67,6 +70,39 @@ class ReportMaker:
         wb.close()
 
     @staticmethod
+    def fit_to_a4(file_path, image_cell="B28", image_height=355):
+        """PDF 변환 시 A4 세로 한 장에 모두 들어가도록 페이지를 설정한다.
+
+        템플릿에는 용지·배율 설정이 없어 기본값으로 변환되면 표와 그래프가
+        여러 장으로 잘린다. 여백을 줄이고 fitToPage 로 한 장에 맞춘다.
+        """
+        wb = openpyxl.load_workbook(file_path)
+        ws = wb.active
+
+        ws.page_setup.paperSize = ws.PAPERSIZE_A4
+        ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
+        # fitToPage 는 sheet_properties 쪽 플래그가 켜져 있어야 실제로 적용된다
+        ws.sheet_properties.pageSetUpPr = PageSetupProperties(fitToPage=True)
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 1
+
+        # 여백을 줄여 인쇄 영역을 최대한 확보한다 (단위: 인치)
+        ws.page_margins.left = ws.page_margins.right = 0.25
+        ws.page_margins.top = ws.page_margins.bottom = 0.3
+        ws.page_margins.header = ws.page_margins.footer = 0.1
+
+        # 인쇄 영역: 표(A1:E27) + 아래에 삽입된 그래프까지 포함해야 한다.
+        # 이미지 높이(px)를 행 높이(기본 20px)로 환산해 마지막 행을 구한다.
+        first_row = int(''.join(c for c in image_cell if c.isdigit()))
+        last_row = first_row + (image_height // 20) + 2
+        last_row = max(last_row, ws.max_row)
+        ws.print_area = f"A1:E{last_row}"
+        ws.page_setup.horizontalCentered = True
+
+        wb.save(file_path)
+        wb.close()
+
+    @staticmethod
     def protect_excel_file(file_path, key):
         wb = openpyxl.load_workbook(file_path)
         
@@ -94,6 +130,8 @@ class ReportMaker:
         self.copy_file(self.template_path, output_path)
         self.create_report(output_path)
         self.insert_image(output_path, image_path, cell, width, height)
+        # 시트 보호 전에 페이지 설정을 끝내야 한다
+        self.fit_to_a4(output_path, cell, height)
         self.protect_excel_file(output_path, key)
         # self.xlsx_to_image(output_path, output_path.split(".")[0] + ".jpg")
 

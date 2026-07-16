@@ -19,18 +19,31 @@ def duty_transformation(input_value, min_value, max_value):
 
     return round(transformed_value)
 
-def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=100, test=True):
+def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=100, test=True,
+             progress=None, on_point=None):
     '''
     [2023-11-18]
-    reversible fan 사용 시 pwm duty 
+    reversible fan 사용 시 pwm duty
     10~45 까지 forward (가압) 10이 max, 45가 min
     55~90 까지 reverse (감압) 55가 min, 90이 max
     duty를 기반으로 pressure 제어 하는 코드를 실행하기 위해, duty 변환 함수를 사용해서 제어
     initial controlled duty = 0 → pwm-pressure PID control → duty result → function^-1(duty result) → real duty
+
+    progress: 진행 상황을 받을 콜백. 지정하지 않으면 터미널에만 출력한다.
+    on_point: 제어 중 측정한 (duty, 압력)을 받을 콜백. 실시간 그래프 표시에 쓴다.
     '''
+    def notify(message):
+        if progress:
+            progress(message)
+        else:
+            print(message)
+
+    def notify_point(duty_value, pressure):
+        if on_point:
+            on_point(duty_value, pressure)
 
     # 테스트 모드
-    if test: 
+    if test:
         return (duty_max, True, target)
     # 현재 압력 값 측정 및 초기값 세팅
     current = abs(sensor_and_controller.pressure_read(0.1, test=test))
@@ -86,39 +99,40 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
         error_pressure = abs(target - current)
         # duty 오차 # 사용하지 않음
         error_duty = abs(duty_avg - duty)
-        print(f"current pressure: {current:.2f}, error: {error_pressure:.2f}, target: {target}")
+        # 제어 중 측정한 점도 실시간 그래프에 표시한다
+        notify_point(duty_real, current)
 
         if error_pressure < pressure_threshold: # and error_duty < max(2, duty/10):
             convergence_time += time_diff
-            print(f"Converging... ({convergence_time}s)")
+            notify(f"팬 세기 {duty_real}% — 압력 {current:.1f} / 목표 {target} Pa "
+                   f"· 안정화 중 ({convergence_time:.0f}/{duration}초)")
         else:
             convergence_time = 0
-            print(f"Converging failed")
-        
+            notify(f"팬 세기 {duty_real}% — 압력 {current:.1f} / 목표 {target} Pa "
+                   f"· 조절 중 (오차 {error_pressure:.1f} Pa)")
+
         if convergence_time >= duration:
             current = abs(sensor_and_controller.pressure_read(final_measure_time, test=test))
-            print(f"Control finished with pressure({current}) for target({target})")
+            notify(f"목표 압력 {target} Pa 도달 (측정값 {current:.1f} Pa)")
             # 실제 duty값으로 변환 후 반환
             duty_real = duty_transformation(duty, duty_min, duty_max)
             return (duty_real, True, current)
 
         # duty 100으로 설정해도 목표 압력에 도달하지 못하는 경우
         if duty == 100 and error_pressure > failure_threshold:
-            print(
-                f"With duty=100, cannot reach the target pressure({target}), current pressure({current})"
-            )
+            notify(f"팬을 최대로 돌려도 목표 {target} Pa에 못 미칩니다 "
+                   f"(현재 {current:.1f} Pa) — 누기량이 많거나 개구부가 열려 있는지 확인하세요")
             failure_time += time_diff
         elif duty == 0 and error_pressure > failure_threshold:
-            print(
-                f"At duty=0, current pressure({current}) exceed the target pressure ({target})"
-            )
+            notify(f"팬을 멈춰도 압력이 목표 {target} Pa를 넘습니다 "
+                   f"(현재 {current:.1f} Pa) — 외풍이나 센서 상태를 확인하세요")
             failure_time += time_diff
         else:
             failure_time = 0
 
         if failure_time >= duration:
             current = abs(sensor_and_controller.pressure_read(final_measure_time, test=test))
-            print(f"Control failed.")
+            notify(f"목표 압력 조절 실패 (최종 {current:.1f} Pa)")
             # 실제 duty값으로 변환 후 반환
             duty_real = duty_transformation(duty, duty_min, duty_max)
             return (duty_real, False, current)
