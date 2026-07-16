@@ -141,6 +141,7 @@ class TestFlow(QObject):
         task.start()
 
     def done(self):
-        page = ProgressPage("시험이 모두 끝났습니다")
+        # 끝난 화면이라 진행 막대는 돌리지 않는다
+        page = ProgressPage("시험이 모두 끝났습니다", done=True)
         page.set_progress("성적서(report.pdf)가 화면에 표시됩니다.")
         self.window.show_page(page, step=len(self.steps) - 1)

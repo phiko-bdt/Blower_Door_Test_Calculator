@@ -12,7 +12,7 @@ import html
 import shutil
 import subprocess
 
-from bdt import paths
+from bdt import paths, theme
 
 
 # ── 데이터 포맷 ─────────────────────────────────────────────
@@ -161,10 +161,12 @@ def build_html(conditions, report, graph_path=None, font_path=None):
 <html lang="ko"><head><meta charset="utf-8">
 <style>
 {font_face}
+/* 색은 bdt.theme 이 단일 소스다 (화면·성적서가 같은 토큰을 쓴다). */
 :root{{
-  --ink:#1c2430; --sub:#5b6672; --muted:#8a94a0;
-  --line:#e4e8ee; --line2:#eef1f5;
-  --accent:#1f5fa8; --accent-soft:#eef4fb; --surface:#ffffff;
+  --ink:{theme.COLOR_INK}; --sub:{theme.COLOR_SUB}; --muted:{theme.COLOR_MUTED};
+  --line:{theme.COLOR_LINE}; --line2:{theme.COLOR_LINE2};
+  --accent:{theme.COLOR_ACCENT}; --accent-soft:{theme.COLOR_ACCENT_SOFT};
+  --surface:{theme.COLOR_SURFACE};
 }}
 *{{margin:0;padding:0;box-sizing:border-box;}}
 @page{{size:A4;margin:11mm 13mm;}}

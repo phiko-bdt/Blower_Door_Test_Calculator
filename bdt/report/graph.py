@@ -9,19 +9,19 @@ from datetime import datetime
 from matplotlib import font_manager
 from matplotlib.ticker import ScalarFormatter, LogLocator
 
-from bdt import paths
+from bdt import paths, theme
 
 
-# 보고서·실시간 뷰와 같은 톤
-C_DEP = "#2a78d6"      # 감압 (blue)
-C_PRE = "#eb6834"      # 가압 (orange)
-C_INK = "#1c2430"
-C_SUB = "#5b6672"
-C_MUTED = "#8a94a0"
-C_GRID = "#e4e8ee"
-C_GRID_MINOR = "#f1f3f6"
-C_50 = "#94a0ae"       # 50 Pa 기준선
-C_SURFACE = "#fcfcfb"
+# 색은 bdt.theme 이 단일 소스다 (화면·성적서가 같은 토큰을 쓴다).
+C_DEP = theme.COLOR_DEP          # 감압 (blue)
+C_PRE = theme.COLOR_PRE          # 가압 (orange)
+C_INK = theme.COLOR_INK
+C_SUB = theme.COLOR_SUB
+C_MUTED = theme.COLOR_MUTED
+C_GRID = theme.COLOR_LINE
+C_GRID_MINOR = theme.COLOR_GRID_MINOR
+C_50 = theme.COLOR_CROSSHAIR     # 50 Pa 기준선
+C_SURFACE = theme.COLOR_PLOT
 
 
 def _nice_range(lo, hi, pad=0.12):

@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSignal
 
 from bdt import paths
+from bdt.widgets import PageHeader, SectionTitle
 
 
 class InputInitialValues(QWidget):
@@ -29,21 +30,21 @@ class InputInitialValues(QWidget):
     def __init__(self):
         super().__init__()
 
-        # 루트 레이아웃 (세로): 헤더 → 안내 → 폼 → 옵션 → 체크박스 → 저장 버튼
+        # 루트 레이아웃 (세로): 헤더 → 폼 → 옵션 → 체크박스 → 저장 버튼
         root = QVBoxLayout()
-        root.setContentsMargins(40, 32, 40, 32)
-        root.setSpacing(18)
+        root.setContentsMargins(40, 24, 40, 24)
+        root.setSpacing(16)
         self.setLayout(root)
 
-        # 상단 제목 바
-        title = QLabel("기밀성능 시험 · 시험 조건 입력")
-        title.setObjectName("Title")
-        root.addWidget(title)
+        # 상단 제목 — 성적서 헤더와 같은 처리 (제목 + 영문 부제 + 규격 + accent 룰)
+        root.addWidget(PageHeader("기밀성능 시험", "Building Airtightness Test"))
 
         # 안내 문구
         hint = QLabel("‘실내 체적’은 필수 입력이며, 감압 / 가압 중 하나 이상을 선택해야 합니다.")
         hint.setObjectName("Hint")
         root.addWidget(hint)
+
+        root.addWidget(SectionTitle("시험 정보"))
 
         # 입력 필드와 레이블 생성
         # (표시되는 레이블, 저장되는 key, placeholder)
@@ -74,6 +75,7 @@ class InputInitialValues(QWidget):
         for idx, (label_text, label_key, placeholder) in enumerate(labels):
             r, c = divmod(idx, 2)
             label = QLabel(label_text)
+            label.setObjectName("FieldLabel")
             input_field = QLineEdit()
             input_field.setPlaceholderText(placeholder)
             form.addWidget(label, r, c * 2)
@@ -86,11 +88,18 @@ class InputInitialValues(QWidget):
         self.cover_combo.addItems(["none", "low", "high"])
         self.count_combo = QComboBox()
         self.count_combo.addItems(["1", "2"])
-        form.addWidget(QLabel("Fan Cover"), base_row, 0)
+        cover_label = QLabel("Fan Cover")
+        cover_label.setObjectName("FieldLabel")
+        count_label = QLabel("Fan Count")
+        count_label.setObjectName("FieldLabel")
+        form.addWidget(cover_label, base_row, 0)
         form.addWidget(self.cover_combo, base_row, 1)
-        form.addWidget(QLabel("Fan Count"), base_row, 2)
+        form.addWidget(count_label, base_row, 2)
         form.addWidget(self.count_combo, base_row, 3)
         root.addWidget(card)
+
+        # 수행할 시험 선택
+        root.addWidget(SectionTitle("수행할 시험"))
 
         # 체크박스 (감압 / 가압) — 가로 배치
         self.checkbox_states = {}
