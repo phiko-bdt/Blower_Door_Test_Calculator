@@ -54,6 +54,9 @@ myenv/
 # git
 .git/
 
+# Claude Code 세션 파일
+.claude/
+
 # 테스트 및 백업 파일
 calculations/
 conditions/
@@ -67,8 +70,7 @@ depressurization_raw.json
 pressurization_raw.json
 raspberrypi.txt
 report_*.xlsx
-# 단, 보고서 템플릿은 입력 파일이므로 추적 대상 (생성된 보고서가 아님)
-!report_template.xlsx
+report.pdf
 graph.png
 test.py
 test_set/
