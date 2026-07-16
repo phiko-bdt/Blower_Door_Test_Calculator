@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QFrame,
     QHeaderView,
+    QStackedWidget,
 )
 from PyQt6.QtCore import (
     QTimer,
@@ -33,6 +34,7 @@ from PyQt6.QtCore import (
     QThread,
     pyqtSignal,
     QCoreApplication,
+    QObject,
 )
 from PyQt6.QtCharts import (
     QChart,
@@ -98,6 +100,25 @@ QLabel#Message {{
     font-size: 26px;
     font-weight: bold;
     color: {COLOR_TEXT};
+}}
+/* 상단 진행 단계 표시 (지나온 단계 / 현재 / 남은 단계) */
+QLabel#Step {{
+    font-size: 14px;
+    padding: 6px 14px;
+    color: {COLOR_SUBTLE};
+}}
+QLabel#Step[state="current"] {{
+    font-weight: bold;
+    color: #FFFFFF;
+    background-color: {COLOR_PRIMARY};
+    border-radius: 14px;
+}}
+QLabel#Step[state="done"] {{
+    color: {COLOR_PRIMARY};
+}}
+QLabel#StepSep {{
+    font-size: 14px;
+    color: {COLOR_BORDER};
 }}
 QLineEdit, QComboBox {{
     font-size: 16px;
@@ -191,7 +212,10 @@ class CenteredWindow:
         center_on_screen(self)
 
 
-class InputInitialValues(CenteredWindow, QWidget):
+class InputInitialValues(QWidget):
+    """시험 조건 입력 페이지."""
+    saved = pyqtSignal()  # 조건 저장 완료 → 다음 단계로
+
     def __init__(self):
         super().__init__()
 
@@ -326,11 +350,14 @@ class InputInitialValues(CenteredWindow, QWidget):
         os.makedirs("conditions", exist_ok=True)
         with open(f"./conditions/conditions_{now}.json", "w") as file:
             json.dump(data, file, indent=4)
-        # 종료
-        self.close()
+        # 다음 단계로
+        self.saved.emit()
 
 
-class LivePressureData(CenteredWindow, QMainWindow):
+class LivePressureData(QWidget):
+    """시험 준비 페이지 — 실시간 압력을 보며 측정 시작을 기다린다."""
+    started = pyqtSignal()  # 측정 시작 버튼 → 다음 단계로
+
     def __init__(self, initial_message="실시간 압력 측정"):
         super(LivePressureData, self).__init__()
 
@@ -405,28 +432,26 @@ class LivePressureData(CenteredWindow, QMainWindow):
         chart_card_layout.setContentsMargins(12, 12, 12, 12)
         chart_card_layout.addWidget(self.chart_view)
 
-        # 메인 위젯 설정
-        main_widget = QWidget()
-        layout = QVBoxLayout(main_widget)
-        layout.setContentsMargins(40, 32, 40, 32)
+        # 페이지 레이아웃
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(40, 24, 40, 32)
         layout.setSpacing(20)
         layout.addLayout(top_bar)
         layout.addWidget(chart_card)
-        self.setCentralWidget(main_widget)
 
         # 초기 데이터 (x는 시간, y는 압력)
         self.data = [QPointF(i, sensor_and_controller.pressure_read(test=test_mode)) for i in range(10)]
         self.series.replace(self.data)
         self.rescale_y()
 
-        # 타이머 설정 (1초마다 update_chart 호출)
+        # 타이머 설정 (100ms 마다 update_chart 호출)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_chart)
         self.timer.start(100)
 
-        # 측정 종료 버튼 클릭 이벤트 연결
+        # 측정 시작 버튼 → 타이머를 멈추고 다음 단계로
         self.stop_button.clicked.connect(self.timer.stop)
-        self.stop_button.clicked.connect(self.close)
+        self.stop_button.clicked.connect(self.started.emit)
 
     def rescale_y(self):
         """측정값이 항상 보이도록 y축 범위를 데이터에 맞춘다.
@@ -462,64 +487,20 @@ class LivePressureData(CenteredWindow, QMainWindow):
         self.rescale_y()
 
 
-class SimpleMessageAutoDisappear(CenteredWindow, QMainWindow):
-    def __init__(self, initial_message="warning", time_to_close=10):
-        super(SimpleMessageAutoDisappear, self).__init__()
-        # 창의 제목을 초기 메시지로 설정
-        self.setWindowTitle(initial_message)
-        self.time_to_close = time_to_close
+class ProgressPage(QWidget):
+    """계산·그래프·성적서처럼 잠깐 걸리는 작업의 진행 상황을 보여주는 페이지.
 
-        # 메시지 + 카운트다운을 중앙 카드에 배치
-        self.label = QLabel(initial_message)
+    전에는 단계마다 별도 창이 떴다 사라졌지만, 이제 한 창 안에서 이 페이지로
+    바뀌고 작업이 끝나면 자동으로 다음 단계로 넘어간다.
+    """
+
+    def __init__(self, title="작업 중..."):
+        super().__init__()
+
+        self.label = QLabel(title)
         self.label.setObjectName("Message")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.count_label = QLabel("")
-        self.count_label.setObjectName("Hint")
-        self.count_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        card = QFrame()
-        card.setObjectName("Card")
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(56, 44, 56, 44)
-        card_layout.setSpacing(16)
-        card_layout.addWidget(self.label)
-        card_layout.addWidget(self.count_label)
-
-        center = QWidget()
-        outer = QVBoxLayout(center)
-        outer.addStretch(1)
-        row = QHBoxLayout()
-        row.addStretch(1)
-        row.addWidget(card)
-        row.addStretch(1)
-        outer.addLayout(row)
-        outer.addStretch(1)
-        self.setCentralWidget(center)
-
-        # 메시지 업데이트 메서드 호출
-        self.update_message()
-
-    def update_message(self):
-        if self.time_to_close >= 0:
-            self.count_label.setText(f"{self.time_to_close}초 후에 창이 닫힙니다.")
-            self.time_to_close -= 1
-            # 1초 후에 다시 메시지 업데이트
-            QTimer.singleShot(1000, self.update_message)
-        else:
-            self.close()
-
-
-class SimpleMessage(CenteredWindow, QMainWindow):
-    def __init__(self, initial_message="warning"):
-        super(SimpleMessage, self).__init__()
-        # 창의 제목 설정
-        self.setWindowTitle(initial_message)
-
-        # 메시지 + 진행 안내를 중앙 카드에 배치
-        self.label = QLabel(initial_message)
-        self.label.setObjectName("Message")
-        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        # 작업 진행 상황을 실시간으로 보여준다 (set_progress 로 갱신)
         self.progress = QLabel("잠시만 기다려 주세요…")
         self.progress.setObjectName("Hint")
         self.progress.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -534,8 +515,7 @@ class SimpleMessage(CenteredWindow, QMainWindow):
         card_layout.addWidget(self.label)
         card_layout.addWidget(self.progress)
 
-        center = QWidget()
-        outer = QVBoxLayout(center)
+        outer = QVBoxLayout(self)
         outer.addStretch(1)
         row = QHBoxLayout()
         row.addStretch(1)
@@ -543,15 +523,17 @@ class SimpleMessage(CenteredWindow, QMainWindow):
         row.addStretch(1)
         outer.addLayout(row)
         outer.addStretch(1)
-        self.setCentralWidget(center)
+
+    def set_title(self, text):
+        self.label.setText(text)
 
     def set_progress(self, text):
         """작업 스레드가 보내온 진행 상황을 표시한다."""
         self.progress.setText(text)
 
 
-class LiveMeasurementChart(CenteredWindow, QMainWindow):
-    """측정 진행 상황 + 압력-풍량 산점도를 실시간으로 보여주는 창.
+class LiveMeasurementChart(QWidget):
+    """측정 진행 상황 + 압력-침기(누기)량 산점도를 실시간으로 보여주는 페이지.
 
     x축은 풍량(㎥/h), y축은 압력차 절대값(Pa)이다.
     감압/가압을 서로 다른 마커로 그리며, 창이 새로 열려도 앞 시험의 점을
@@ -578,10 +560,11 @@ class LiveMeasurementChart(CenteredWindow, QMainWindow):
     C_CROSSHAIR = "#94A0AE"   # 십자 포인터
 
     # 로그 축 범위 (로그 스케일이라 하한은 0 이 될 수 없다)
-    # 풍량은 팬 개수에 비례하므로 팬 1개 기준 값에 팬 개수를 곱해 축을 잡는다.
+    # 침기(누기)량은 팬 개수에 비례하므로 팬 1개 기준 값에 팬 개수를 곱해 축을 잡는다.
     # (팬 1개 → 500~2000, 팬 2개 → 1000~4000 ㎥/h)
     FLOW_MIN_PER_FAN, FLOW_MAX_PER_FAN = 500.0, 2000.0
-    PRESSURE_MIN, PRESSURE_MAX = 1.0, 150.0  # 압력차 (Pa)
+    # 공간에 따라 형성되는 압력차가 크게 달라져 0.1~100 Pa 를 오간다
+    PRESSURE_MIN, PRESSURE_MAX = 0.1, 100.0  # 압력차 (Pa)
 
     @classmethod
     def reset(cls):
@@ -591,9 +574,8 @@ class LiveMeasurementChart(CenteredWindow, QMainWindow):
 
     def __init__(self, initial_message="측정 중...", num_fans=1):
         super(LiveMeasurementChart, self).__init__()
-        self.setWindowTitle(initial_message)
 
-        # 팬 개수에 맞춰 풍량 축 범위를 정한다
+        # 팬 개수에 맞춰 침기(누기)량 축 범위를 정한다
         self.flow_min = self.FLOW_MIN_PER_FAN * num_fans
         self.flow_max = self.FLOW_MAX_PER_FAN * num_fans
 
@@ -614,7 +596,7 @@ class LiveMeasurementChart(CenteredWindow, QMainWindow):
         self.chart.setBackgroundVisible(False)
         self.chart.setPlotAreaBackgroundBrush(QColor(self.C_SURFACE))
         self.chart.setPlotAreaBackgroundVisible(True)
-        self.chart.setTitle("압력 – 풍량 관계 (log–log)")
+        self.chart.setTitle("압력 – 침기(누기)량  (log–log)")
         title_font = QFont()
         title_font.setPointSize(13)
         title_font.setBold(True)
@@ -638,7 +620,7 @@ class LiveMeasurementChart(CenteredWindow, QMainWindow):
         self.axis_x.setLabelFormat("%g")
         self.axis_x.setRange(self.PRESSURE_MIN, self.PRESSURE_MAX)
         self.axis_y = QLogValueAxis()
-        self.axis_y.setTitleText("풍량 Q (㎥/h)")
+        self.axis_y.setTitleText("침기(누기)량 (㎥/h)")
         self.axis_y.setBase(10)
         self.axis_y.setLabelFormat("%g")
         self.axis_y.setRange(self.flow_min, self.flow_max)
@@ -705,13 +687,11 @@ class LiveMeasurementChart(CenteredWindow, QMainWindow):
         chart_card_layout.setContentsMargins(12, 12, 12, 12)
         chart_card_layout.addWidget(chart_view)
 
-        center = QWidget()
-        outer = QVBoxLayout(center)
-        outer.setContentsMargins(40, 32, 40, 32)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(40, 24, 40, 32)
         outer.setSpacing(18)
         outer.addLayout(top_bar)
         outer.addWidget(chart_card)
-        self.setCentralWidget(center)
 
     def set_progress(self, text):
         """작업 스레드가 보내온 진행 상황을 표시한다."""
@@ -739,14 +719,23 @@ class LiveMeasurementChart(CenteredWindow, QMainWindow):
         self.move_crosshair(flow, pressure)
 
 
-class ResultImageWindow(CenteredWindow, QWidget):
+class ResultImageWindow(QWidget):
+    """시험 결과 그래프 페이지."""
+    next_step = pyqtSignal()
+
     def __init__(self, image_path, size_w, size_h):
         super().__init__()
-        self.setWindowTitle('시험 결과 그래프')
 
-        # 상단 제목 바
+        # 상단 제목 바 + 다음 버튼
         title = QLabel("시험 결과 그래프")
         title.setObjectName("Title")
+        next_button = QPushButton("결과표 보기")
+        next_button.setMinimumWidth(180)
+        next_button.clicked.connect(self.next_step.emit)
+        head = QHBoxLayout()
+        head.addWidget(title)
+        head.addStretch(1)
+        head.addWidget(next_button)
 
         # 이미지 라벨 (가로세로 비율 유지, 부드럽게 스케일)
         self.label = QLabel()
@@ -768,20 +757,29 @@ class ResultImageWindow(CenteredWindow, QWidget):
         card_layout.addWidget(self.label)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(40, 32, 40, 32)
+        root.setContentsMargins(40, 24, 40, 32)
         root.setSpacing(20)
-        root.addWidget(title)
+        root.addLayout(head)
         root.addWidget(card)
 
 
-class ResultTableWindow(CenteredWindow, QWidget):
+class ResultTableWindow(QWidget):
+    """시험 결과표 페이지."""
+    next_step = pyqtSignal()
+
     def __init__(self, test_data):
         super().__init__()
-        self.setWindowTitle('Blower Door Test Report')
 
-        # 상단 제목 바
+        # 상단 제목 바 + 다음 버튼
         title = QLabel("Blower Door Test 결과")
         title.setObjectName("Title")
+        next_button = QPushButton("성적서 만들기")
+        next_button.setMinimumWidth(180)
+        next_button.clicked.connect(self.next_step.emit)
+        head = QHBoxLayout()
+        head.addWidget(title)
+        head.addStretch(1)
+        head.addWidget(next_button)
 
         # 테이블 위젯 설정
         self.tableWidget = QTableWidget()
@@ -800,9 +798,9 @@ class ResultTableWindow(CenteredWindow, QWidget):
 
         # 레이아웃 설정
         layout = QVBoxLayout()
-        layout.setContentsMargins(40, 32, 40, 32)
+        layout.setContentsMargins(40, 24, 40, 32)
         layout.setSpacing(20)
-        layout.addWidget(title)
+        layout.addLayout(head)
         layout.addWidget(self.tableWidget)
         self.setLayout(layout)
 
@@ -857,6 +855,88 @@ class ResultTableWindow(CenteredWindow, QWidget):
         self.tableWidget.setItem(11, 5, QTableWidgetItem('㎥/(h·Pa^n)'))   # 누기 계수 C
         self.tableWidget.setItem(12, 5, QTableWidgetItem('-'))             # 기류 지수 n
         self.tableWidget.setItem(13, 5, QTableWidgetItem('-'))             # 결정 계수 r^2
+
+
+class StepHeader(QWidget):
+    """상단 진행 단계 표시. 시험은 정해진 순서로 진행되므로 현재 위치를 보여준다.
+
+    수행할 시험(감압/가압)이 조건 입력 후에 정해지므로 단계 목록은 나중에 채운다.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.labels = []
+        self.row = QHBoxLayout(self)
+        self.row.setContentsMargins(40, 18, 40, 10)
+        self.row.setSpacing(0)
+        self.row.addStretch(1)
+
+    def set_steps(self, steps):
+        """단계 목록을 새로 구성한다."""
+        while self.row.count():
+            item = self.row.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self.labels = []
+        for i, name in enumerate(steps):
+            if i:
+                sep = QLabel("›")
+                sep.setObjectName("StepSep")
+                self.row.addWidget(sep)
+            label = QLabel(name)
+            label.setObjectName("Step")
+            self.row.addWidget(label)
+            self.labels.append(label)
+        self.row.addStretch(1)
+
+    def set_current(self, index):
+        """현재 단계는 강조, 지나온 단계는 흐리게 표시한다."""
+        for i, label in enumerate(self.labels):
+            if i < index:
+                state = "done"
+            elif i == index:
+                state = "current"
+            else:
+                state = "todo"
+            label.setProperty("state", state)
+            # 스타일 재적용 (property 변경만으로는 갱신되지 않는다)
+            label.style().unpolish(label)
+            label.style().polish(label)
+
+
+class MainWindow(CenteredWindow, QMainWindow):
+    """시험 전 과정을 담는 단일 창.
+
+    단계마다 창을 새로 띄우지 않고 이 창 안에서 페이지만 바꾼다.
+    덕분에 창 크기·위치가 시험 내내 유지된다.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("기밀성능 시험")
+
+        self.header = StepHeader()
+        self.stack = QStackedWidget()
+
+        center = QWidget()
+        outer = QVBoxLayout(center)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        outer.addWidget(self.header)
+        outer.addWidget(self.stack, 1)
+        self.setCentralWidget(center)
+
+    def show_page(self, page, step=None):
+        """페이지를 현재 화면으로 바꾸고, 이전 페이지는 정리한다."""
+        previous = self.stack.currentWidget()
+        self.stack.addWidget(page)
+        self.stack.setCurrentWidget(page)
+        if step is not None:
+            self.header.set_current(step)
+        if previous is not None:
+            self.stack.removeWidget(previous)
+            previous.deleteLater()
 
 
 class BackgroundTask(QThread):
@@ -1236,6 +1316,101 @@ class BackgroundTask(QThread):
                   start_new_session=True)
 
 
+class TestFlow(QObject):
+    """시험 절차를 순서대로 진행한다.
+
+    전에는 단계마다 창을 띄우고 app.exec() 를 다시 돌리는 식이라 창이 계속
+    새로 떴다. 이제 창 하나를 두고 시그널을 따라 페이지만 바꾼다.
+    """
+
+    TESTS = {"depressurization": "감압", "pressurization": "가압"}
+
+    def __init__(self, window):
+        super().__init__()
+        self.window = window
+        self.task = None      # 실행 중인 백그라운드 작업 (GC 방지용 참조)
+        self.data = {}
+        self.steps = []
+        self.pending = []
+
+    # ── 단계 진행 ────────────────────────────────────────────
+    def start(self):
+        self.window.header.set_steps(["조건 입력"])
+        page = InputInitialValues()
+        page.saved.connect(self.on_conditions_saved)
+        self.window.show_page(page, step=0)
+
+    def on_conditions_saved(self):
+        with open('conditions.json', 'r') as file:
+            self.data = json.load(file)
+
+        self.time_start = datetime.now().strftime("%y/%m/%d %H:%M:%S")
+        # 새 시험이므로 이전 시험의 그래프 점을 비운다
+        LiveMeasurementChart.reset()
+        self.fan_count = int(self.data.get("fan_count", 1))
+
+        # 실제 수행할 시험만 단계로 표시한다
+        self.pending = [t for t in self.TESTS if self.data.get(t)]
+        self.steps = ["조건 입력"] + [self.TESTS[t] for t in self.pending] + ["계산", "성적서"]
+        self.window.header.set_steps(self.steps)
+        self.next_test()
+
+    def next_test(self):
+        """남은 시험이 있으면 준비 화면으로, 없으면 계산으로 넘어간다."""
+        if self.pending:
+            self.prepare(self.pending.pop(0))
+        else:
+            self.after_measurement()
+
+    def prepare(self, test):
+        label = self.TESTS[test]
+        page = LivePressureData("측정 시작 버튼을 누르세요.")
+        page.started.connect(lambda: self.measure(test))
+        self.window.show_page(page, step=self.steps.index(label))
+
+    def measure(self, test):
+        label = self.TESTS[test]
+        page = LiveMeasurementChart(f"{label} 시험 측정 중...", num_fans=self.fan_count)
+        self.window.show_page(page, step=self.steps.index(label))
+
+        task = BackgroundTask(test)
+        task.progress.connect(page.set_progress)
+        task.point.connect(page.add_point)
+        task.position.connect(page.move_crosshair)
+        task.finished.connect(self.next_test)
+        self.task = task
+        task.start()
+
+    def after_measurement(self):
+        # 측정 종료 시간 기록
+        time_end = datetime.now().strftime("%H:%M:%S")
+        self.data["test_period"] = f"{self.time_start}~{time_end}"
+        with open("conditions.json", "w") as file:
+            json.dump(self.data, file, indent=4)
+        self.run_task("calculation", "시험 결과를 계산하는 중…", "계산", self.run_graph)
+
+    def run_graph(self):
+        self.run_task("graph_plotting", "그래프를 그리는 중…", "계산", self.run_report)
+
+    def run_report(self):
+        self.run_task("reporting", "성적서를 만드는 중…", "성적서", self.done)
+
+    def run_task(self, kind, title, step_name, on_done):
+        """진행 페이지를 띄우고 백그라운드 작업을 실행한 뒤 다음 단계로 넘긴다."""
+        page = ProgressPage(title)
+        self.window.show_page(page, step=self.steps.index(step_name))
+        task = BackgroundTask(kind)
+        task.progress.connect(page.set_progress)
+        task.finished.connect(on_done)
+        self.task = task
+        task.start()
+
+    def done(self):
+        page = ProgressPage("시험이 모두 끝났습니다")
+        page.set_progress("성적서(report.pdf)가 화면에 표시됩니다.")
+        self.window.show_page(page, step=len(self.steps) - 1)
+
+
 def stop_fan_on_exit():
     """프로그램이 어떤 경로로 끝나든 팬을 정지시킨다.
 
@@ -1257,15 +1432,11 @@ if __name__ == '__main__':
     atexit.register(stop_fan_on_exit)
 
     app = QApplication(sys.argv)
-    # 전역 디자인 테마 적용 (모든 창에 일관 적용)
+    # 전역 디자인 테마 적용
     app.setStyleSheet(APP_STYLE)
 
-    # 창 사이즈 설정 (1280×800 터치스크린 기준)
-    size_w = WIN_W
-    size_h = WIN_H
     # 폰트 설정
     font_id = QFontDatabase.addApplicationFont("./NanumSquare_acL.ttf")
-
     if font_id != -1:
         font_families = QFontDatabase.applicationFontFamilies(font_id)
         # 로드한 글꼴의 첫 번째 패밀리를 사용
@@ -1273,163 +1444,21 @@ if __name__ == '__main__':
     else:
         print("Failed to load font.")
 
-    # 메세지 종료 시간
-    time_to_close = 2
+    # 시험 전 과정을 담는 창 하나 (1280×800 터치스크린 기준)
+    window = MainWindow()
+    window.resize(WIN_W, WIN_H)
+    window.show()
 
     # 시작 시 팬 정지에 실패했다면(PWM 핀 손상 의심) 시험 전에 반드시 알린다
     if fan_stop_failed:
         QMessageBox.warning(
-            None, "팬 정지 실패",
+            window, "팬 정지 실패",
             f"팬을 정지시키지 못했습니다 (PWM 핀 GPIO{sensor_and_controller.PWM_GPIO} 손상 의심).\n\n"
             "팬이 계속 회전할 수 있으니 전원을 수동으로 차단하고,\n"
             "PWM 배선과 핀 상태를 점검한 뒤 시험을 진행하세요.")
 
-    # 시험 조건 입력
-    initialize = InputInitialValues()
-    initialize.setWindowTitle("시험 조건 입력")
-    initialize.resize(size_w, size_h)
-    initialize.show()
-    app.exec()
+    # 시험 절차 시작 (이후 진행은 시그널을 따라 페이지만 바뀐다)
+    flow = TestFlow(window)
+    flow.start()
 
-    # 시험 조건 불러오기
-    with open('conditions.json', 'r') as file:
-        data = json.load(file)
-
-    # 측정 시작 시간 저장
-    time_start = datetime.now().strftime("%y/%m/%d %H:%M:%S")
-
-    # 새 시험이므로 이전 시험의 그래프 점을 비운다
-    LiveMeasurementChart.reset()
-    # 풍량 축 범위는 팬 개수에 비례한다
-    fan_count = int(data.get("fan_count", 1))
-
-    # 감압 시험
-    if data.get("depressurization"):
-        # 감압 시험 준비
-        long_message = "측정 시작 버튼을 눌리세요."
-        pressure = LivePressureData(long_message)
-        pressure.setWindowTitle("감압 시험 준비")
-        pressure.resize(size_w, size_h)
-        pressure.show()
-        app.exec()
-        ###################    
-        ## 데이터 측정 시작 with depressurization 파일명
-        ###################    
-        message = LiveMeasurementChart("감압 시험 측정 중...", num_fans=fan_count)
-        message.setWindowTitle("감압 시험 측정 중")
-        message.resize(size_w, size_h)
-        message.show()
-        wait_for_end = BackgroundTask("depressurization")
-        wait_for_end.progress.connect(message.set_progress)
-        wait_for_end.point.connect(message.add_point)
-        wait_for_end.position.connect(message.move_crosshair)
-        wait_for_end.finished.connect(message.close)
-        wait_for_end.start()
-        app.exec()
-        # 측정 종료
-        end_of_test = SimpleMessageAutoDisappear("감압 시험 측정 완료.", time_to_close)
-        end_of_test.resize(size_w, size_h)
-        end_of_test.show()
-        app.exec()
-
-    # 가압 시험
-    if data.get("pressurization"):
-        # 가압 시험 준비
-        long_message = "측정 시작 버튼을 눌리세요."
-        pressure = LivePressureData(long_message)
-        pressure.setWindowTitle("가압시험 준비")
-        pressure.resize(size_w, size_h)
-        pressure.show()
-        app.exec()
-        ###################    
-        ## 데이터 측정 시작 with pressurization 파일명
-        ###################
-        message = LiveMeasurementChart("가압 시험 측정 중...", num_fans=fan_count)
-        message.setWindowTitle("가압 시험 측정 중")
-        message.resize(size_w, size_h)
-        message.show()
-        wait_for_end = BackgroundTask("pressurization")
-        wait_for_end.progress.connect(message.set_progress)
-        wait_for_end.point.connect(message.add_point)
-        wait_for_end.position.connect(message.move_crosshair)
-        wait_for_end.finished.connect(message.close)
-        wait_for_end.start()
-        app.exec()
-        # 측정 종료
-        end_of_test = SimpleMessageAutoDisappear("가압 시험 측정 완료.", time_to_close)
-        end_of_test.resize(size_w, size_h)
-        end_of_test.show()
-        app.exec()
-
-    # 측정 종료 시간 저장
-    time_end = datetime.now().strftime("%H:%M:%S")
-    data["test_period"] = f"{time_start}~{time_end}"
-    with open("conditions.json", "w") as file:
-        json.dump(data, file, indent=4)
-
-    ###################
-    ## 결과 계산 코드 실행
-    ###################
-
-    # 계산 중 메시지 창
-    message = SimpleMessage("시험 결과 계산 중...")
-    message.setWindowTitle("...")
-    message.resize(size_w, size_h)
-    message.show()
-    wait_for_end = BackgroundTask("calculation")
-    wait_for_end.progress.connect(message.set_progress)
-    wait_for_end.finished.connect(message.close)
-    wait_for_end.start()    
-    app.exec()
-    # 계산 종료
-    end_of_test = SimpleMessageAutoDisappear("시험 결과 계산 완료.", time_to_close)
-    end_of_test.resize(size_w, size_h)
-    end_of_test.show()
-    app.exec()
-
-    ###################
-    ## 그래프 작성 코드 실행
-    ###################
-    
-    # 그래프 작성 메시지 창
-    message = SimpleMessage("그래프 작성 중...")
-    message.setWindowTitle("...")
-    message.resize(size_w, size_h)
-    message.show()
-    # 작성 시작
-    wait_for_end = BackgroundTask("graph_plotting")
-    wait_for_end.progress.connect(message.set_progress)
-    wait_for_end.finished.connect(message.close)
-    wait_for_end.start()    
-    app.exec()
-    # 그래프 작성 종료
-    end_of_test = SimpleMessageAutoDisappear("그래프 작성 완료.", time_to_close)
-    end_of_test.resize(size_w, size_h)
-    end_of_test.show()
-    app.exec()
-
-    ###################
-    ## 보고서 생성 코드 실행
-    ###################
-    
-    # 보고서 생성 중 메시지 창
-    message = SimpleMessage("보고서 생성 중...")
-    message.setWindowTitle("...")
-    message.resize(size_w, size_h)
-    message.show()
-    wait_for_end = BackgroundTask("reporting")
-    wait_for_end.progress.connect(message.set_progress)
-    wait_for_end.finished.connect(message.close)
-    wait_for_end.start()    
-    app.exec()
-    # 보고서 생성 종료
-    end_of_test = SimpleMessageAutoDisappear("보고서 생성 완료.", time_to_close)
-    end_of_test.resize(size_w, size_h)
-    end_of_test.show()
-    app.exec()
-
-    # 시험 종료
-    end_of_test = SimpleMessageAutoDisappear("시험이 모두 종료되었습니다.", time_to_close)
-    end_of_test.resize(size_w, size_h)
-    end_of_test.show()
-    app.exec()
+    sys.exit(app.exec())

@@ -29,6 +29,19 @@ def _text(value):
     return html.escape(value) if value else "–"
 
 
+def _measure(value, unit):
+    """체적·면적처럼 단위가 붙는 값. 숫자면 천단위 구분 후 단위를 붙인다."""
+    text = "" if value is None else str(value).strip()
+    if not text:
+        return "–"
+    try:
+        number = float(text)
+    except ValueError:
+        return html.escape(text)
+    shown = f"{number:,.0f}" if number == int(number) else f"{number:,.2f}"
+    return f"{shown} {unit}"
+
+
 def _data_uri(path, mime):
     with open(path, "rb") as f:
         return f"data:{mime};base64," + base64.b64encode(f.read()).decode()
@@ -39,9 +52,18 @@ def build_html(conditions, report, graph_path=None, font_path=None):
     has_dep = bool(conditions.get("depressurization"))
     has_pre = bool(conditions.get("pressurization"))
 
+    # 대표값 기준: 감·가압 모두 했으면 평균, 하나만 했으면 그 값
+    use_avg = has_dep and has_pre and "ACH50_avg" in report
+    if use_avg:
+        basis = "감·가압 평균"
+    elif has_dep:
+        basis = "감압 기준"
+    else:
+        basis = "가압 기준"
+
     def pick(metric):
         """대표값: 감·가압 모두면 평균, 하나면 그 값."""
-        if has_dep and has_pre and f"{metric}_avg" in report:
+        if use_avg:
             return report.get(f"{metric}_avg")
         if has_dep:
             return report.get(f"{metric}-")
@@ -55,11 +77,11 @@ def build_html(conditions, report, graph_path=None, font_path=None):
         kinds.append("가압")
     kind_label = " · ".join(kinds) if kinds else "–"
 
-    # 대표 지표 3종
+    # 대표 지표 3종 (어떤 값을 쓴 것인지 basis 로 밝힌다)
     kpis = [
-        ("ACH50", _num(pick("ACH50")), "1/h", "시간당 공기교환횟수"),
-        ("Q50", _num(pick("Q50"), 1), "㎥/h", "50 Pa 기준 누기량"),
-        ("AL50", _num(pick("AL50"), 4), "㎡", "유효 누기면적"),
+        ("ACH50", _num(pick("ACH50")), "1/h", f"시간당 공기교환횟수 · {basis}"),
+        ("Q50", _num(pick("Q50"), 1), "㎥/h", f"50 Pa 기준 침기(누기)량 · {basis}"),
+        ("AL50", _num(pick("AL50"), 4), "㎡", f"유효 누기면적 · {basis}"),
     ]
 
     # 상세표 행: (라벨, 감압, 가압, 단위)
@@ -71,7 +93,7 @@ def build_html(conditions, report, graph_path=None, font_path=None):
         )
 
     detail_rows = [
-        ("Q50", "누기량", *row("Q50", 1, "㎥/h")),
+        ("Q50", "침기(누기)량", *row("Q50", 1, "㎥/h")),
         ("ACH50", "공기교환횟수", *row("ACH50", 2, "1/h")),
         ("AL50", "유효 누기면적", *row("AL50", 4, "㎡")),
         ("C0", "누기 계수 C", *row("C0", 2, "㎥/(h·Paⁿ)")),
@@ -80,17 +102,18 @@ def build_html(conditions, report, graph_path=None, font_path=None):
          _num(report.get("r^2+"), 4), ""),
     ]
 
+    # (표시 라벨, conditions 키, 단위) — 단위가 있으면 숫자로 보고 천단위 구분한다
     info_fields = [
-        ("시험 목적", "purpose"),
-        ("시험 위치", "location"),
-        ("시험 방식", "method"),
-        ("의뢰자", "requester"),
-        ("설계자", "designer"),
-        ("시험자", "tester"),
-        ("시공자", "builder"),
-        ("실내 체적", "interior volume"),
-        ("연면적", "floor area"),
-        ("구조", "structure"),
+        ("시험 목적", "purpose", None),
+        ("시험 위치", "location", None),
+        ("시험 방식", "method", None),
+        ("의뢰자", "requester", None),
+        ("설계자", "designer", None),
+        ("시험자", "tester", None),
+        ("시공자", "builder", None),
+        ("실내 체적", "interior volume", "㎥"),
+        ("연면적", "floor area", "㎡"),
+        ("구조", "structure", None),
     ]
 
     # 리소스 임베드
@@ -110,8 +133,10 @@ def build_html(conditions, report, graph_path=None, font_path=None):
     # 표 행 HTML
     info_html = "".join(
         f'<div class="info-item"><span class="info-label">{_text(label)}</span>'
-        f'<span class="info-value">{_text(conditions.get(key))}</span></div>'
-        for label, key in info_fields
+        f'<span class="info-value">'
+        f'{_measure(conditions.get(key), unit) if unit else _text(conditions.get(key))}'
+        f'</span></div>'
+        for label, key, unit in info_fields
     )
     kpi_html = "".join(
         f'<div class="kpi"><div class="kpi-name">{name}</div>'
@@ -143,7 +168,10 @@ def build_html(conditions, report, graph_path=None, font_path=None):
 @page{{size:A4;margin:11mm 13mm;}}
 html{{font-family:'ReportKR','Noto Sans CJK KR',sans-serif;color:var(--ink);
   font-size:9.5pt;line-height:1.4;-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
-.sheet{{max-width:184mm;margin:0 auto;}}
+/* 인쇄 영역(A4 297mm - 상하 여백 22mm) 안에서 내용을 세로 중앙에 두어
+   위·아래 여백이 균등하게 보이도록 한다. */
+body{{min-height:274mm;display:flex;flex-direction:column;justify-content:center;}}
+.sheet{{max-width:184mm;width:100%;margin:0 auto;}}
 
 /* 헤더 */
 .header{{display:flex;justify-content:space-between;align-items:flex-end;
