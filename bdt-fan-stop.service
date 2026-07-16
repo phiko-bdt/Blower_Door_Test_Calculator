@@ -1,0 +1,20 @@
+[Unit]
+# 부팅 시 팬 PWM(GPIO13) duty 를 0% 로 고정해 팬이 도는 상태로 시작하지 않게 한다.
+# 앱 실행 전에 팬 전원을 먼저 올리는 운용 순서에 대한 fool proof 안전장치.
+Description=Blower Door Test: 부팅 시 팬 PWM duty 0 고정 (안전 초기화)
+Documentation=file:///home/phiko/Blower_Door_Test_Calculator/readme.md
+# pigpiod 없이는 PWM 을 만질 수 없으므로 반드시 그 뒤에 실행한다.
+Requires=pigpiod.service
+After=pigpiod.service
+
+[Service]
+Type=oneshot
+# python3 -m 은 CWD 를 sys.path 에 넣지만, 확실히 하기 위해 PYTHONPATH 도 지정한다.
+WorkingDirectory=/home/phiko/Blower_Door_Test_Calculator
+Environment=PYTHONPATH=/home/phiko/Blower_Door_Test_Calculator
+ExecStart=/usr/bin/python3 -m bdt.fan_stop
+# 결과(성공/핀 손상 의심)를 systemctl status 로 확인할 수 있게 상태를 남긴다.
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
