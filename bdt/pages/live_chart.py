@@ -1,7 +1,15 @@
 """측정 진행 상황 + 압력-침기(누기)량 산점도 페이지."""
 
-from PyQt6.QtWidgets import QWidget, QLabel, QVBoxLayout, QFrame
-from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtWidgets import (
+    QWidget,
+    QLabel,
+    QVBoxLayout,
+    QHBoxLayout,
+    QPushButton,
+    QFrame,
+    QMessageBox,
+)
+from PyQt6.QtCore import QPointF, Qt, pyqtSignal
 from PyQt6.QtCharts import (
     QChart,
     QChartView,
@@ -23,6 +31,8 @@ class LiveMeasurementChart(QWidget):
     감압/가압을 서로 다른 마커로 그리며, 창이 새로 열려도 앞 시험의 점을
     계속 보여주기 위해 측정값을 클래스 변수에 누적한다.
     """
+
+    cancelled = pyqtSignal()  # 시험 중단 버튼 → 측정 작업 취소
 
     # {시험 종류: [(압력차, 풍량, 압력 변동폭), ...]}
     # 감압→가압으로 창이 바뀌어도 유지된다.
@@ -84,10 +94,23 @@ class LiveMeasurementChart(QWidget):
         self.progress.setObjectName("Hint")
         self.progress.setWordWrap(True)
 
-        top_bar = QVBoxLayout()
-        top_bar.setSpacing(6)
-        top_bar.addWidget(self.label)
-        top_bar.addWidget(self.progress)
+        head = QVBoxLayout()
+        head.setSpacing(6)
+        head.addWidget(self.label)
+        head.addWidget(self.progress)
+
+        # 시험 중단 — 몇 분씩 걸리는 측정을 화면에서 멈출 수단이 없으면
+        # 잘못된 걸 알아채도 앱을 강제 종료하는 수밖에 없다.
+        self.cancel_button = QPushButton("시험 중단")
+        self.cancel_button.setObjectName("Secondary")
+        self.cancel_button.setMinimumWidth(140)
+        self.cancel_button.clicked.connect(self._confirm_cancel)
+
+        top_bar = QHBoxLayout()
+        top_bar.setSpacing(0)
+        top_bar.addLayout(head)
+        top_bar.addStretch(1)
+        top_bar.addWidget(self.cancel_button, 0, Qt.AlignmentFlag.AlignTop)
 
         # 압력-풍량 산점도
         self.chart = QChart()
@@ -238,6 +261,19 @@ class LiveMeasurementChart(QWidget):
         outer.setSpacing(18)
         outer.addLayout(top_bar)
         outer.addWidget(chart_card, 1)
+
+    def _confirm_cancel(self):
+        """실수로 눌러 몇 분치 측정을 날리지 않도록 한 번 되묻는다."""
+        answer = QMessageBox.question(
+            self, "시험 중단",
+            "진행 중인 측정을 중단할까요?\n\n"
+            "지금까지 측정한 값은 저장되지 않고, 팬은 정지합니다.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer == QMessageBox.StandardButton.Yes:
+            self.cancel_button.setEnabled(False)
+            self.cancel_button.setText("중단하는 중…")
+            self.cancelled.emit()
 
     def set_progress(self, text):
         """작업 스레드가 보내온 진행 상황을 표시한다."""

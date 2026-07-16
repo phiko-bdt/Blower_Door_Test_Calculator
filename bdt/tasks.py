@@ -31,9 +31,14 @@ MEASURE_SECONDS = 10      # 한 지점에서 압력을 평균낼 시간 (초)
 SETTLE_SECONDS_PER_DUTY = 2
 
 
+class TestCancelled(Exception):
+    """사용자가 시험을 중단했다. 오류가 아니므로 따로 다룬다."""
+
+
 class BackgroundTask(QThread):
-    finished = pyqtSignal()  # 작업 완료 시그널
-    error = pyqtSignal(str)  # 작업 오류 시그널
+    finished = pyqtSignal()   # 작업 완료 시그널 (성공·실패·중단 무관하게 항상)
+    error = pyqtSignal(str)   # 작업 오류 시그널
+    cancelled = pyqtSignal()  # 사용자가 중단시킴
     progress = pyqtSignal(str)  # 진행 상황 시그널 (측정 중 창에 표시)
     # (풍량, 압력차, 압력 표준편차, 시험종류) 확정 측정점 → 마커 + 변동폭 가로선
     point = pyqtSignal(float, float, float, str)
@@ -46,6 +51,20 @@ class BackgroundTask(QThread):
         # duty→풍량 변환에 쓰는 팬 계수 (blower_door_test 에서 설정)
         self.fan_coeff = None
         self.num_fans = 1
+        # 중단 요청 플래그. QThread 를 밖에서 강제로 죽이면 팬이 도는 채로
+        # 남을 수 있어, 측정 루프가 스스로 확인하고 빠져나오게 한다.
+        self._cancelled = False
+        # 센서 이상을 이미 알렸는지 (같은 경고를 반복해서 쏟지 않기 위해)
+        self._sensor_warned = False
+
+    def cancel(self):
+        """시험 중단을 요청한다 (측정 루프가 확인하고 빠져나온다)."""
+        self._cancelled = True
+
+    def _check_cancelled(self):
+        """중단 요청이 있었으면 예외를 던져 측정 루프를 빠져나온다."""
+        if self._cancelled:
+            raise TestCancelled()
 
     def report(self, message):
         """진행 상황을 터미널과 GUI 양쪽에 알린다."""
@@ -72,18 +91,30 @@ class BackgroundTask(QThread):
             self.position.emit(flow, abs(pressure))
 
     def _read_pressure(self, average_time):
-        """압력을 한 번 읽는다. 센서가 끊기면 None."""
+        """압력을 한 번 읽는다. 센서가 끊기면 None.
+
+        실패를 매번 출력하면 센서가 죽었을 때 초당 수십 줄이 터미널을 뒤덮는다
+        (.desktop 이 Terminal=true 라 사용자에게 그대로 보인다). 같은 문제는
+        한 번만 알리고, 다시 읽히면 회복됐음을 알린다.
+        """
         try:
-            return hardware.pressure_read(
+            value = hardware.pressure_read(
                 average_time=average_time, test=TEST_MODE)
         except hardware.SensorTimeout as exc:
-            print(exc)
+            if not self._sensor_warned:
+                self._sensor_warned = True
+                self.report(f"⚠ 압력 센서 응답 없음 — {exc}")
             return None
+        if self._sensor_warned:
+            self._sensor_warned = False
+            self.report("압력 센서 응답이 돌아왔습니다.")
+        return value
 
     def live_wait(self, duty, seconds):
         """seconds 동안 대기하면서 현재 압력을 십자 포인터로 실시간 갱신한다."""
         deadline = time.time() + seconds
         while time.time() < deadline:
+            self._check_cancelled()
             p = self._read_pressure(0.1)
             if p is not None:
                 self.report_position(duty, p)
@@ -101,12 +132,18 @@ class BackgroundTask(QThread):
         samples = []
         deadline = time.time() + seconds
         while time.time() < deadline:
+            self._check_cancelled()
             p = self._read_pressure(0.3)
             if p is not None:
                 samples.append(p)
                 self.report_position(duty, p)
         if not samples:
-            return 0.0, 0.0, 0.0, 0.0
+            # 예전엔 0.0 을 돌려줬다. 센서가 죽어도 시험이 조용히 계속되며
+            # 모든 지점이 0 Pa 로 기록됐고, 그 뒤 계산이 log(0) 로 터졌다.
+            # 침묵으로 오염된 데이터를 남기느니 여기서 멈춘다.
+            raise hardware.SensorTimeout(
+                f"{seconds}초 동안 압력을 한 번도 읽지 못했습니다. "
+                "센서 연결과 전원을 확인하세요.")
         mean = sum(samples) / len(samples)
         # 표본 1개면 stdev 가 예외를 낸다
         sigma = statistics.stdev(samples) if len(samples) > 1 else 0.0
@@ -119,40 +156,52 @@ class BackgroundTask(QThread):
             elif self.task_type == "pressurization":
                 self.blower_door_test(self.task_type)
             elif self.task_type == "calculation":
-                self.calculation()
+                self._calculate_or_explain()
             elif self.task_type == "graph_plotting":
                 self.graph_plotting()
             elif self.task_type == "reporting":
                 self.reporting()
+        except TestCancelled:
+            # 사용자가 멈춘 것이니 오류가 아니다. 팬만 확실히 세운다.
+            self._stop_fan()
+            self.report("시험을 중단했습니다 — 팬을 정지시켰습니다.")
+            self.cancelled.emit()
         except Exception as exc:
             # 측정/계산 중 예외가 나도 GUI가 멈추지 않도록 로그를 남기고 시그널로 알림
             traceback.print_exc()
-            # 측정 작업 중 오류면 팬을 반드시 정지시켜 안전 상태로 둔다
-            if self.task_type in ("depressurization", "pressurization"):
-                try:
-                    hardware.duty_set(0, test=TEST_MODE)
-                except Exception:
-                    traceback.print_exc()
+            self._stop_fan()
             self.error.emit(str(exc))
         finally:
-            # 성공/실패와 무관하게 항상 완료 시그널을 보내 대기 창이 닫히도록 한다
-            self.finished.emit()  # 작업 완료 시그널 발생
+            # 성공/실패/중단과 무관하게 항상 완료 시그널을 보낸다.
+            # 이 시그널만으로 다음 단계를 진행해서는 안 된다 — 실패했는지는
+            # error/cancelled 시그널로 판단한다 (flow.TestFlow 참고).
+            self.finished.emit()
 
-    @staticmethod
-    def measuring_pressure(total_duration, local_duration):
-        # 압력 측정
-        pressure = []
-        # 측정 시간
-        pressure_size = total_duration
-        while pressure_size:
-            measuring_duration = local_duration
-            pressure.append(hardware.
-                            pressure_read(average_time=
-                                          measuring_duration,
-                                          test=TEST_MODE))
-            pressure_size -= measuring_duration
-        # 측정 평균값 저장
-        return sum(pressure)/len(pressure)
+    def _calculate_or_explain(self):
+        """계산을 수행하되, 실패하면 현장에서 알아들을 수 있는 말로 바꿔 알린다.
+
+        회귀는 log(압력) 을 쓰므로 압력이 0 이면 'math domain error', 실내 체적이
+        0 이면 'float division by zero' 가 그대로 화면에 떴다. 원인을 짐작할 수
+        없는 문구라 무엇을 고쳐야 할지 알 수 없다.
+        """
+        try:
+            self.calculation()
+        except (ValueError, ZeroDivisionError) as exc:
+            raise RuntimeError(
+                "측정값으로 결과를 계산할 수 없습니다.\n"
+                "압력이 제대로 측정되지 않았거나 시험 조건(실내 체적 등)이 "
+                f"올바르지 않을 수 있습니다.\n\n(원인: {exc})") from exc
+
+    def _stop_fan(self):
+        """측정 작업이 중간에 끝났으면 팬을 반드시 세워 안전 상태로 둔다."""
+        if self.task_type not in ("depressurization", "pressurization"):
+            return
+        try:
+            if hardware.duty_set(0, test=TEST_MODE) != 0:
+                self.report("⚠ 팬 정지 실패 — PWM 핀 손상이 의심됩니다. "
+                            "전원을 수동으로 차단하세요.")
+        except Exception:
+            traceback.print_exc()
 
     def blower_door_test(self, test):
 
@@ -188,8 +237,11 @@ class BackgroundTask(QThread):
         # 시험 시작 시간
         time_start = datetime.now().strftime("%H:%M:%S")
 
-        # 시작 0 기류 압력 측정 # 현재 버전에서는 생략
-        # measuring["initial_zero_pressure"] = self.measuring_pressure(10, 1)
+        # 0 기류(baseline) 압력 측정은 의도적으로 생략한다.
+        # ISO 9972 는 시험 전후로 팬을 끈 상태의 압력차를 재서 측정값에서 빼도록
+        # 하지만(바람·연돌효과 보정), 빠른 측정과 편의를 위해 넣지 않기로 했다.
+        # 이 앱은 ISO 준용이지 엄밀한 준수를 목표로 하지 않는다. 대신 지점별
+        # 압력 변동폭(pressure_spread)을 남겨 바람의 영향을 눈으로 볼 수 있게 한다.
 
         # 시험 시작
         self.report(f"팬 속도를 조절해 목표 압력({TARGET_PRESSURE} Pa)을 맞추는 중…")
@@ -202,7 +254,8 @@ class BackgroundTask(QThread):
                                                      duty_max=max_duty,
                                                      test=TEST_MODE,
                                                      progress=self.report,
-                                                     on_point=self.report_position)
+                                                     on_point=self.report_position,
+                                                     check_cancelled=self._check_cancelled)
         # get_duty 가 팬에 마지막으로 건 duty. 첫 측정 지점의 안정화 시간을
         # 계산할 기준이며, 실패 시 duty 를 max 로 덮어써도 팬의 실제 상태는
         # 이 값이므로 따로 들고 있어야 한다.
@@ -247,8 +300,6 @@ class BackgroundTask(QThread):
             self.report_point(d, p, sigma)
             before = d
 
-        # 종료 0 기류 압력 측정 # 현재 버전에서는 생략
-        # measuring["final_zero_pressure"] = self.measuring_pressure(10, 1)
         # 시험 종료 — 팬 정지 후 실제로 멈췄는지 확인한다
         self.report("측정 완료 — 팬을 정지하는 중…")
         if hardware.duty_set(zero_duty, test=TEST_MODE) != 0:
@@ -268,6 +319,13 @@ class BackgroundTask(QThread):
             json.dump(measuring, file, indent=4)
 
     def calculation(self):
+        # 지난 시험의 결과 파일을 먼저 지운다.
+        # 남겨두면 이번 계산이 실패했을 때 그래프·성적서가 그 낡은 값을 그대로
+        # 읽어, 새 건물 이름에 이전 건물의 측정값이 실린 성적서가 발행된다.
+        # 실패하면 뒤 단계가 파일을 못 찾고 함께 멈추는 편이 안전하다.
+        if os.path.exists(paths.CALCULATION_RAW_JSON):
+            os.remove(paths.CALCULATION_RAW_JSON)
+
         # 시험 조건 불러오기
         with open(paths.CONDITIONS_JSON, 'r') as file:
             data = json.load(file)

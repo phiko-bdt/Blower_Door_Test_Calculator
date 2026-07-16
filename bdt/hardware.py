@@ -25,8 +25,8 @@ import serial
 PWM_GPIO = 13  # 하드웨어 PWM1 (물리핀 33)
 PWM_FREQUENCY = 1000  # 1kHz
 
-# 팬 전원 릴레이 GPIO
-FAN_POWER_GPIO = 23
+# 팬 전원은 수동 공급이라 릴레이(GPIO23)는 실사용하지 않는다.
+# 제어 코드는 쓰이지 않은 채 남아 있어 삭제했다 (필요해지면 git 이력 참고).
 
 
 class SensorTimeout(RuntimeError):
@@ -75,14 +75,6 @@ def _shutdown_pi():
 
 
 atexit.register(_shutdown_pi)
-
-
-def temperature_and_humidity(port='/dev/ttyUSB1', baudrate=9600):
-    # 시리얼 연결
-    ser = serial.Serial(port=port,
-                        baudrate=baudrate,
-                        timeout=1)
-    return ser
 
 
 # 압력 센서 Modbus 프레임 규격 (Lefoo, 홀딩 레지스터 1개 읽기)
@@ -240,18 +232,6 @@ def _verify_pin_level(pi, duty_value):
     if duty_value == 0:
         print("      팬이 계속 100%로 회전할 수 있으니 전원을 수동으로 차단하세요.")
     return False
-
-
-def fan_power(set=1):
-    # 공유 pigpio 연결 재사용
-    pi = _get_pi()
-
-    # 팬 전원 릴레이 GPIO
-    gpio_pin = FAN_POWER_GPIO
-    # To set the relay
-    pi.write(gpio_pin, set)
-
-    return 0
 
 
 if __name__ == '__main__':

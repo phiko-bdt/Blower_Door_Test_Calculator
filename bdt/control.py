@@ -29,7 +29,7 @@ def duty_transformation(input_value, min_value, max_value):
     return round(transformed_value)
 
 def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=100, test=True,
-             progress=None, on_point=None):
+             progress=None, on_point=None, check_cancelled=None):
     '''
     [2023-11-18]
     reversible fan 사용 시 pwm duty
@@ -40,6 +40,9 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
 
     progress: 진행 상황을 받을 콜백. 지정하지 않으면 터미널에만 출력한다.
     on_point: 제어 중 측정한 (duty, 압력)을 받을 콜백. 실시간 그래프 표시에 쓴다.
+    check_cancelled: 중단 요청을 확인하는 콜백(중단이면 예외를 던진다).
+        목표 압력에 닿지 못하면 이 루프가 오래 돌 수 있어, 그동안에도 사용자가
+        시험을 멈출 수 있어야 한다.
     '''
     def notify(message):
         if progress:
@@ -50,6 +53,10 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
     def notify_point(duty_value, pressure):
         if on_point:
             on_point(duty_value, pressure)
+
+    def cancel_check():
+        if check_cancelled:
+            check_cancelled()
 
     # 테스트 모드
     if test:
@@ -79,6 +86,7 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
     pid.output_limits = (-control_limit, control_limit)
 
     while True:
+        cancel_check()
         # 제어 시작 시간
         time_start = time.time()
         # PID 계산
@@ -95,6 +103,7 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
         # (기존엔 delay 만큼 통째로 sleep 해서 그래프가 delay 마다 한 번만 움직였다)
         deadline = time.time() + delay
         while time.time() < deadline:
+            cancel_check()
             live = abs(hardware.pressure_read(0.1, test=test))
             notify_point(duty_real, live)
         # 압력 값 측정

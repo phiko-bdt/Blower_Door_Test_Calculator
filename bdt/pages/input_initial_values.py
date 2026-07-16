@@ -136,13 +136,54 @@ class InputInitialValues(QWidget):
 
         self.checkbox_states[checkbox_text] = checkbox_state
 
+    def _check_number(self, key, label, required):
+        """숫자 입력칸을 검증하고 정리된 문자열을 돌려준다. 문제가 있으면 None.
+
+        예전에는 비어 있는지만 봤다. '424.21 ㎥' 나 '약 424' 처럼 단위·글자가
+        섞이면 그대로 통과했다가, 3~5분짜리 측정을 다 마친 **뒤** 계산 단계에서
+        ValueError 로 터졌다. 여기서 막으면 바로 고쳐 넣을 수 있다.
+        """
+        field = self.input_fields[key]
+        text = field.text().strip()
+        if not text:
+            if required:
+                QMessageBox.warning(self, "입력 오류",
+                                    f"'{label}'는 필수 입력 사항입니다.")
+                field.setFocus()
+                return None
+            return ""
+
+        # 천 단위 쉼표는 흔한 입력이라 받아준다
+        try:
+            value = float(text.replace(",", ""))
+        except ValueError:
+            QMessageBox.warning(
+                self, "입력 오류",
+                f"'{label}'에는 숫자만 넣을 수 있습니다.\n"
+                f"입력한 값: {text}\n\n단위나 글자를 빼고 숫자만 적어 주세요.")
+            field.setFocus()
+            field.selectAll()
+            return None
+        if value <= 0:
+            QMessageBox.warning(self, "입력 오류",
+                                f"'{label}'는 0보다 커야 합니다.")
+            field.setFocus()
+            field.selectAll()
+            return None
+        return text.replace(",", "")
+
     def save_data(self):
-        # 필수 값인 'interior volume' 값이 비어있는지 확인
-        interior_volume = self.input_fields["interior volume"].text()
-        if not interior_volume.strip():
-            # 경고 메시지 표시
-            QMessageBox.warning(self, "입력 오류", "'실내 체적 (㎥)'는 필수 입력 사항입니다.")
+        # 숫자 칸 검증 — 계산부가 float() 로 읽으므로 여기서 걸러야 한다
+        volume = self._check_number("interior volume", "실내 체적 (㎥)",
+                                    required=True)
+        if volume is None:
             return
+        self.input_fields["interior volume"].setText(volume)
+
+        area = self._check_number("floor area", "연면적 (㎡)", required=False)
+        if area is None:
+            return
+        self.input_fields["floor area"].setText(area)
 
         # 감압 또는 가압 중 적어도 하나가 선택되었는지 확인
         is_checked = self.checkbox_states.get("depressurization", False) or self.checkbox_states.get("pressurization", False)

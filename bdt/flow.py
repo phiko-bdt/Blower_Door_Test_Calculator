@@ -12,6 +12,7 @@ from bdt.pages import (
     InputInitialValues,
     LivePressureData,
     ProgressPage,
+    ErrorPage,
     LiveMeasurementChart,
     CalculationSummary,
 )
@@ -69,15 +70,54 @@ class TestFlow(QObject):
         self.data = {}
         self.steps = []
         self.pending = []
+        # 작업이 실패·중단됐음을 표시. finished 시그널은 성공 여부와 무관하게
+        # 항상 오므로, 이 표시를 보고 다음 단계로 넘어갈지 판단한다.
+        self.stopped = False
 
     # ── 단계 진행 ────────────────────────────────────────────
     def start(self):
+        self.stopped = False
+        self.pending = []
+        self.summary = None
         self.window.header.set_steps(["조건 입력"])
         page = InputInitialValues()
         page.saved.connect(self.on_conditions_saved)
         self.window.show_page(page, step=0)
 
+    # ── 실패·중단 처리 ───────────────────────────────────────
+    def on_error(self, message):
+        """작업이 실패했다 — 흐름을 멈추고 화면에 알린다.
+
+        예전엔 error 시그널이 아무데도 연결돼 있지 않아, 실패해도 흐름이
+        그대로 다음 단계로 넘어갔다.
+        """
+        self.stopped = True
+        page = ErrorPage("시험을 계속할 수 없습니다", message)
+        page.restart.connect(self.start)
+        self.window.show_page(page)
+
+    def on_cancelled(self):
+        """사용자가 시험을 중단했다 — 조건 입력부터 다시 시작한다."""
+        self.stopped = True
+        self.start()
+
+    def _guard(self, on_done):
+        """실패·중단했으면 다음 단계로 넘어가지 않게 감싼다."""
+        def proceed():
+            if self.stopped:
+                return
+            on_done()
+        return proceed
+
+    def _connect(self, task, on_done):
+        """작업의 완료·실패·중단 시그널을 한 자리에서 연결한다."""
+        task.error.connect(self.on_error)
+        task.cancelled.connect(self.on_cancelled)
+        task.finished.connect(self._guard(on_done))
+        self.task = task
+
     def on_conditions_saved(self):
+        self.stopped = False
         with open(paths.CONDITIONS_JSON, 'r') as file:
             self.data = json.load(file)
 
@@ -114,8 +154,9 @@ class TestFlow(QObject):
         task.progress.connect(page.set_progress)
         task.point.connect(page.add_point)
         task.position.connect(page.move_crosshair)
-        task.finished.connect(self.next_test)
-        self.task = task
+        # 중단 버튼 → 측정 루프가 스스로 빠져나오고 팬을 세운다
+        page.cancelled.connect(task.cancel)
+        self._connect(task, self.next_test)
         task.start()
 
     def after_measurement(self):
@@ -153,8 +194,7 @@ class TestFlow(QObject):
         self.summary.set_progress(status)
         task = BackgroundTask(kind)
         task.progress.connect(self.summary.set_progress)
-        task.finished.connect(on_done)
-        self.task = task
+        self._connect(task, on_done)
         task.start()
 
     def run_task(self, kind, title, step_name, on_done):
@@ -163,8 +203,7 @@ class TestFlow(QObject):
         self.window.show_page(page, step=self.steps.index(step_name))
         task = BackgroundTask(kind)
         task.progress.connect(page.set_progress)
-        task.finished.connect(on_done)
-        self.task = task
+        self._connect(task, on_done)
         task.start()
 
     def done(self):

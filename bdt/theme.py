@@ -55,6 +55,13 @@ COLOR_ACCENT_PRESSED = "#154578"  # pressed
 COLOR_ACCENT_SOFT = "#eef4fb"     # 아주 옅은 포인트 배경
 
 # ──────────────────────────────────────────────────────────────
+# 상태색 — 계열색으로 절대 재사용하지 않는다.
+# 색 하나로만 알리지 않고 항상 문구·기호와 함께 쓴다.
+# ──────────────────────────────────────────────────────────────
+COLOR_DANGER = "#b42318"   # 실패 (표면 대비 6.4:1)
+COLOR_WARNING = "#b45309"  # 주의
+
+# ──────────────────────────────────────────────────────────────
 # 표면
 # ──────────────────────────────────────────────────────────────
 COLOR_SURFACE = "#ffffff"  # 카드·입력칸
@@ -128,7 +135,7 @@ QLabel#StatName {{
     color: {COLOR_ACCENT};
 }}
 QLabel#StatName[state="warn"] {{
-    color: #b45309;
+    color: {COLOR_WARNING};
 }}
 QLabel#StatValue {{
     font-size: 34px;
@@ -145,6 +152,12 @@ QLabel#Message {{
     font-size: 26px;
     font-weight: bold;
     color: {COLOR_INK};
+}}
+/* 실패 화면 — 놓치면 안 되는 상태라 상태색을 쓴다 (문구와 함께) */
+QLabel#ErrorTitle {{
+    font-size: 24px;
+    font-weight: bold;
+    color: {COLOR_DANGER};
 }}
 /* 계산 결과 브리핑 — 성적서 상세표와 같은 짜임 */
 QLabel#Formula {{
