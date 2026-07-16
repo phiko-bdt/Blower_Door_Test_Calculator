@@ -11,7 +11,8 @@ Ctrl+C 로 중단해도 안전하게 0%로 되돌린다.
 """
 
 import time
-import sensor_and_controller as s
+
+from bdt import hardware as s
 
 HOLD = 5      # 각 단계 유지 시간(초)
 START_WAIT = 10  # 시작 대기(초)

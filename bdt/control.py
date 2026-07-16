@@ -1,12 +1,21 @@
+"""PWM-압력 PID 제어.
+
+reversible fan 의 duty 를 PID 로 조절해 목표 압력에 도달시킨다.
+센서 입력·팬 출력은 bdt.hardware 를 통해 수행한다.
+"""
+
 import time
+
 from simple_pid import PID
-import sensor_and_controller
+
+from bdt import hardware
+
 
 def duty_transformation(input_value, min_value, max_value):
     # 입력 값이 최소와 최대 값 사이에 있는지 확인
     if not 0 <= input_value <= 100:
         raise ValueError("Input value should be between 0 and 100")
-    
+
     # 변환 함수
     if min_value > max_value:
         # Forward flow일 때, 0~100까지를 45~10으로 변환
@@ -46,7 +55,7 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
     if test:
         return (duty_max, True, target)
     # 현재 압력 값 측정 및 초기값 세팅
-    current = abs(sensor_and_controller.pressure_read(0.1, test=test))
+    current = abs(hardware.pressure_read(0.1, test=test))
     duty = 0
 
     # 압력 수렴 조건
@@ -81,15 +90,15 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
         # PID 제어용 duty에서 실제 duty값으로 변경
         duty_real = duty_transformation(duty, duty_min, duty_max)
         # duty 값 적용
-        sensor_and_controller.duty_set(duty_real, test=False)
+        hardware.duty_set(duty_real, test=False)
         # 압력 변화를 기다리는 동안(delay) 압력을 짧은 주기로 읽어 실시간 위치를 갱신한다.
         # (기존엔 delay 만큼 통째로 sleep 해서 그래프가 delay 마다 한 번만 움직였다)
         deadline = time.time() + delay
         while time.time() < deadline:
-            live = abs(sensor_and_controller.pressure_read(0.1, test=test))
+            live = abs(hardware.pressure_read(0.1, test=test))
             notify_point(duty_real, live)
         # 압력 값 측정
-        current = abs(sensor_and_controller.pressure_read(average_time, test=test))
+        current = abs(hardware.pressure_read(average_time, test=test))
         # duty의 이동 평균 계산
         window.append(duty)
         if len(window) > window_size:
@@ -116,7 +125,7 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
                    f"· 조절 중 (오차 {error_pressure:.1f} Pa)")
 
         if convergence_time >= duration:
-            current = abs(sensor_and_controller.pressure_read(final_measure_time, test=test))
+            current = abs(hardware.pressure_read(final_measure_time, test=test))
             notify(f"목표 압력 {target} Pa 도달 (측정값 {current:.1f} Pa)")
             # 실제 duty값으로 변환 후 반환
             duty_real = duty_transformation(duty, duty_min, duty_max)
@@ -135,7 +144,7 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
             failure_time = 0
 
         if failure_time >= duration:
-            current = abs(sensor_and_controller.pressure_read(final_measure_time, test=test))
+            current = abs(hardware.pressure_read(final_measure_time, test=test))
             notify(f"목표 압력 조절 실패 (최종 {current:.1f} Pa)")
             # 실제 duty값으로 변환 후 반환
             duty_real = duty_transformation(duty, duty_min, duty_max)

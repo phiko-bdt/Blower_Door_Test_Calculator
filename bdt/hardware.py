@@ -1,8 +1,19 @@
-import serial
-import crcmod
+"""센서 입력·팬 PWM 출력 하드웨어 제어.
+
+라즈베리파이4의 pigpio(하드웨어 PWM)와 시리얼 압력 센서를 다룬다.
+
+pigpio 연결은 호출마다 새로 만들지 않고 모듈 수준에서 한 번만 열어 재사용한다
+(`_get_pi()`의 지연 초기화 싱글턴). 앱 종료 시 atexit 훅이 duty 0%를 보장한 뒤
+연결을 정리한다.
+"""
+
+import atexit
 import struct
 import time
+
+import crcmod
 import pigpio
+import serial
 
 
 # 팬 PWM 출력 핀.
@@ -14,9 +25,56 @@ import pigpio
 PWM_GPIO = 13  # 하드웨어 PWM1 (물리핀 33)
 PWM_FREQUENCY = 1000  # 1kHz
 
+# 팬 전원 릴레이 GPIO
+FAN_POWER_GPIO = 23
+
 
 class SensorTimeout(RuntimeError):
     """압력 센서가 제한 시간 안에 응답하지 않을 때 발생한다."""
+
+
+# ── pigpio 연결 재사용 ──────────────────────────────────────
+# 호출마다 pigpio.pi()/stop() 을 반복하면 데몬 소켓을 계속 여닫아 비효율적이고,
+# 종료 타이밍에 따라 팬이 도는 상태로 남을 위험이 있다. 지연 초기화 싱글턴으로
+# 연결을 한 번만 열어 재사용하고, atexit 에서 duty 0% + stop() 을 보장한다.
+_pi = None
+
+
+def _get_pi():
+    """공유 pigpio 연결을 반환한다. 없으면 지연 생성한다.
+
+    연결이 끊겼으면(데몬 재시작 등) 다시 연결을 시도한다.
+    """
+    global _pi
+    if _pi is None or not _pi.connected:
+        _pi = pigpio.pi()
+        if not _pi.connected:
+            raise RuntimeError(
+                "pigpio 데몬에 연결하지 못했습니다. 'sudo pigpiod' 로 "
+                "pigpiod 가 실행 중인지 확인하세요.")
+    return _pi
+
+
+def _shutdown_pi():
+    """종료 시 팬을 반드시 멈추고(duty 0%) pigpio 연결을 정리한다.
+
+    atexit 로 등록되어 앱 종료 시 자동 호출된다. 연결을 실제로 연 적이 없으면
+    (TEST_MODE 등) 아무 것도 하지 않는다.
+    """
+    global _pi
+    if _pi is None:
+        return
+    try:
+        if _pi.connected:
+            # 종료 직전 팬 정지 보장.
+            _pi.hardware_PWM(PWM_GPIO, PWM_FREQUENCY, 0)
+    finally:
+        if _pi.connected:
+            _pi.stop()
+        _pi = None
+
+
+atexit.register(_shutdown_pi)
 
 
 def temperature_and_humidity(port='/dev/ttyUSB1', baudrate=9600):
@@ -103,8 +161,8 @@ def duty_set(duty, test=True):
     # 허용 범위(0~100)를 벗어나면 잘라낸다.
     duty_value = max(0, min(100, duty_value))
 
-    # Connect to pigpio
-    pi = pigpio.pi()
+    # 공유 pigpio 연결 재사용 (호출마다 새로 열지 않는다)
+    pi = _get_pi()
 
     # Set the hardware PWM
     # The range of duty cycle is from 0 to 1,000,000 (representing 0% to 100%)
@@ -115,8 +173,6 @@ def duty_set(duty, test=True):
 
     healthy = _verify_pin_level(pi, duty_value)
 
-    # Disconnect from pigpio
-    pi.stop()
     return 0 if healthy else -1
 
 
@@ -145,16 +201,14 @@ def _verify_pin_level(pi, duty_value):
 
 
 def fan_power(set=1):
-    # Connect to pigpio
-    pi = pigpio.pi()
-    
-    # Define the GPIO pin for power relay for the Fan
-    gpio_pin = 23
+    # 공유 pigpio 연결 재사용
+    pi = _get_pi()
+
+    # 팬 전원 릴레이 GPIO
+    gpio_pin = FAN_POWER_GPIO
     # To set the relay
     pi.write(gpio_pin, set)
 
-    # Disconnect from pigpio
-    pi.stop()
     return 0
 
 
