@@ -22,6 +22,14 @@ from bdt import paths
 from bdt.config import TEST_MODE
 
 
+# 시험 조건
+TARGET_PRESSURE = 70      # 측정 시작점으로 삼을 목표 압력차 (Pa)
+MEASURE_SECONDS = 10      # 한 지점에서 압력을 평균낼 시간 (초)
+# duty 를 1 옮길 때마다 기다릴 안정화 시간 (초).
+# duty 차가 클수록 압력이 자리 잡는 데 오래 걸려 차이에 비례해 기다린다.
+SETTLE_SECONDS_PER_DUTY = 2
+
+
 class BackgroundTask(QThread):
     finished = pyqtSignal()  # 작업 완료 시그널
     error = pyqtSignal(str)  # 작업 오류 시그널
@@ -166,10 +174,9 @@ class BackgroundTask(QThread):
         # measuring["initial_zero_pressure"] = self.measuring_pressure(10, 1)
 
         # 시험 시작
-        success = False
-        self.report("팬 속도를 조절해 목표 압력(70 Pa)을 맞추는 중…")
-        # 70Pa PWM duty 값 추출
-        (duty, success, pressure) = control.get_duty(target=70,
+        self.report(f"팬 속도를 조절해 목표 압력({TARGET_PRESSURE} Pa)을 맞추는 중…")
+        # 목표 압력에 해당하는 PWM duty 값 추출
+        (duty, success, pressure) = control.get_duty(target=TARGET_PRESSURE,
                                                      delay=5,
                                                      average_time=0.5,
                                                      control_limit=10,
@@ -178,41 +185,46 @@ class BackgroundTask(QThread):
                                                      test=TEST_MODE,
                                                      progress=self.report,
                                                      on_point=self.report_position)
+        # get_duty 가 팬에 마지막으로 건 duty. 첫 측정 지점의 안정화 시간을
+        # 계산할 기준이며, 실패 시 duty 를 max 로 덮어써도 팬의 실제 상태는
+        # 이 값이므로 따로 들고 있어야 한다.
+        fan_duty = duty
+
         if success:
             self.report(f"목표 압력 도달 — 팬 세기 {duty}%, 압력 {pressure:.1f} Pa")
         else:
-            self.report(f"70 Pa 도달 실패 — 최대 팬 세기({max_duty}%)로 측정을 진행합니다")
-
-        # 70Pa PWM duty 값 추출 실패 시 = 누기량/침기량 대비 압력형성을 위한 풍량 부족
-        # max duty부터 min duty 전 까지 10번 수행
-        if not success:
+            # 목표 압력 도달 실패 = 누기량/침기량 대비 압력형성을 위한 풍량 부족.
+            # 최대 duty 부터 min duty 전까지 훑는다.
+            self.report(f"{TARGET_PRESSURE} Pa 도달 실패 — "
+                        f"최대 팬 세기({max_duty}%)로 측정을 진행합니다")
             duty = max_duty
-            success = True
 
-        # duty 최대값 설정 완료 후 측정 수행
-        if success:
-            # 60Pa 측정 값 저장
-            measuring["measured_value"].append([pressure, duty])
-            self.report_point(duty, pressure)
-            # 측정 범위 설정
-            num_to_measure = 10
-            step = (duty - initial_duty) / (num_to_measure - 1)  # 간격 계산
-            duty_range = [round(duty - i * step) for i in range(num_to_measure)]
-            # 데이터 측정
-            before = duty
-            total = len(duty_range)
-            for i, d in enumerate(duty_range, start=1):
-                hardware.duty_set(d, test=TEST_MODE)
-                settle = abs(before - d)
-                self.report(f"[{i}/{total}] 팬 세기 {d}% — 압력 안정화 대기 중… ({settle}초)")
-                # 대기·측정 내내 실시간으로 십자 포인터를 갱신한다
-                self.live_wait(d, settle)
-                self.report(f"[{i}/{total}] 팬 세기 {d}% — 압력 측정 중… (10초)")
-                p = self.live_measure(d, 10)
-                self.report(f"[{i}/{total}] 팬 세기 {d}% — 측정 완료: {p:.1f} Pa")
-                measuring["measured_value"].append([p, d])
-                self.report_point(d, p)
-                before = d
+        # 측정 범위 설정 — duty 지점에서 min_duty 직전까지 10등분
+        num_to_measure = 10
+        step = (duty - initial_duty) / (num_to_measure - 1)  # 간격 계산
+        duty_range = [round(duty - i * step) for i in range(num_to_measure)]
+
+        # 데이터 측정.
+        # get_duty 가 이미 잰 값을 여기에 미리 넣지 않는다. 넣으면 첫 지점의
+        # duty 를 아래 루프가 한 번 더 재서 같은 duty 가 두 번 들어가고(N=11),
+        # get_duty 는 내부에서 abs() 를 쓰므로 그 점만 부호가 뒤집힌 채
+        # 저장됐다. 또 도달 실패 시엔 다른 duty 에서 잰 압력이 max_duty 와
+        # 짝지어져 들어갔다. 모든 점을 이 루프에서 같은 방식으로 잰다.
+        before = fan_duty
+        total = len(duty_range)
+        for i, d in enumerate(duty_range, start=1):
+            hardware.duty_set(d, test=TEST_MODE)
+            # duty 를 많이 움직일수록 압력이 자리 잡는 데 오래 걸린다
+            settle = abs(before - d) * SETTLE_SECONDS_PER_DUTY
+            self.report(f"[{i}/{total}] 팬 세기 {d}% — 압력 안정화 대기 중… ({settle}초)")
+            # 대기·측정 내내 실시간으로 십자 포인터를 갱신한다
+            self.live_wait(d, settle)
+            self.report(f"[{i}/{total}] 팬 세기 {d}% — 압력 측정 중… ({MEASURE_SECONDS}초)")
+            p = self.live_measure(d, MEASURE_SECONDS)
+            self.report(f"[{i}/{total}] 팬 세기 {d}% — 측정 완료: {p:.1f} Pa")
+            measuring["measured_value"].append([p, d])
+            self.report_point(d, p)
+            before = d
 
         # 종료 0 기류 압력 측정 # 현재 버전에서는 생략
         # measuring["final_zero_pressure"] = self.measuring_pressure(10, 1)
