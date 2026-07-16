@@ -24,7 +24,8 @@ class LiveMeasurementChart(QWidget):
     계속 보여주기 위해 측정값을 클래스 변수에 누적한다.
     """
 
-    # {시험 종류: [(압력차, 풍량), ...]} — 감압→가압으로 창이 바뀌어도 유지된다.
+    # {시험 종류: [(압력차, 풍량, 압력 변동폭), ...]}
+    # 감압→가압으로 창이 바뀌어도 유지된다.
     # 보고서 그래프(report.graph)와 같은 축 배치라 (x, y) 순서 그대로 담는다.
     accumulated = {"depressurization": [], "pressurization": []}
 
@@ -177,6 +178,22 @@ class LiveMeasurementChart(QWidget):
         # 수직선은 범례에 중복 표시되지 않도록 숨긴다
         self.chart.legend().markers(self.crosshair["v"])[0].setVisible(False)
 
+        # 변동폭 가로선의 범례 항목.
+        # 막대는 지점마다 별도 시리즈로 그려야 해서(QLineSeries 는 NaN 으로
+        # 선을 끊지 못하고 Qt 가 아예 무시한다) 범례가 지저분해진다. 그래서
+        # 막대들의 범례 표시는 모두 끄고, 설명용으로 이 시리즈 하나만 남긴다.
+        self.range_legend = QLineSeries()
+        self.range_legend.setName("측정 중 압력 변동 (±1σ)")
+        legend_pen = QPen(QColor(self.C_TICK))
+        legend_pen.setWidthF(1.6)
+        self.range_legend.setPen(legend_pen)
+        self.chart.addSeries(self.range_legend)
+        self.range_legend.attachAxis(self.axis_x)
+        self.range_legend.attachAxis(self.axis_y)
+
+        # 지점별 변동폭 가로선 (그린 뒤 참조를 들고 있어야 GC 되지 않는다)
+        self.range_bars = []
+
         # 감압/가압 각각의 시리즈를 만들고 누적된 점을 복원한다
         self.series = {}
         for test_type, (name, shape, color) in self.STYLES.items():
@@ -193,9 +210,14 @@ class LiveMeasurementChart(QWidget):
             self.chart.addSeries(scatter)
             scatter.attachAxis(self.axis_x)
             scatter.attachAxis(self.axis_y)
-            for pressure, flow in self.accumulated[test_type]:
-                scatter.append(pressure, flow)
             self.series[test_type] = scatter
+
+        # 누적된 점과 그 변동폭 가로선을 복원한다 (시리즈를 모두 만든 뒤에
+        # 해야 두 시험의 막대가 제 색으로 붙는다)
+        for test_type in self.STYLES:
+            for pressure, flow, sigma in self.accumulated[test_type]:
+                self.series[test_type].append(pressure, flow)
+                self._draw_range(pressure, flow, sigma, test_type)
 
         # 앞 시험에서 넘어온 점이 있으면 그 점들에 맞춰 축을 잡고,
         # 없으면 씨앗 범위에 기준선만 그린다.
@@ -229,8 +251,9 @@ class LiveMeasurementChart(QWidget):
         xs = [self.PRESSURE_REF]
         ys = []
         for points in self.accumulated.values():
-            for pressure, flow in points:
-                xs.append(pressure)
+            for pressure, flow, sigma in points:
+                # 변동폭 가로선의 양 끝까지 축 안에 들어와야 잘리지 않는다
+                xs.extend((pressure - sigma, pressure + sigma))
                 ys.append(flow)
 
         self.x_lo, self.x_hi, x_ticks = padded_range(min(xs), max(xs),
@@ -268,13 +291,49 @@ class LiveMeasurementChart(QWidget):
         self._cursor = (pressure, flow)
         self._redraw_crosshair()
 
-    def add_point(self, flow, pressure, test_type):
-        """확정된 측정점을 마커로 찍는다. 압력차는 절대값으로 그린다."""
+    def _draw_range(self, pressure, flow, sigma, test_type):
+        """측정 중 압력이 흔들린 폭(±1σ)을 점 위에 가로선으로 그린다.
+
+        y(풍량)는 duty 에서 계산한 값이라 변동이 없고, 흔들리는 축은 x(압력차)
+        뿐이라 가로선이 된다. 0 기류 보정을 생략하는 운용이므로, 이 선이 길면
+        바람이 센 상태에서 잡힌 점이라는 뜻이다.
+        """
+        if sigma <= 0:
+            return
+        bar = QLineSeries()
+        pen = QPen(QColor(self.STYLES[test_type][2]))
+        pen.setWidthF(1.6)
+        pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+        bar.setPen(pen)
+        bar.append(pressure - sigma, flow)
+        bar.append(pressure + sigma, flow)
+        self.chart.addSeries(bar)
+        bar.attachAxis(self.axis_x)
+        bar.attachAxis(self.axis_y)
+        # 막대마다 범례가 생기면 못 쓸 정도로 지저분해진다. 설명은
+        # range_legend 하나가 대신한다.
+        markers = self.chart.legend().markers(bar)
+        if markers:
+            markers[0].setVisible(False)
+        # 마커(점)가 가로선 위에 오도록 순서를 유지 — 산점도를 다시 맨 앞으로
+        scatter = self.series[test_type]
+        self.chart.removeSeries(scatter)
+        self.chart.addSeries(scatter)
+        scatter.attachAxis(self.axis_x)
+        scatter.attachAxis(self.axis_y)
+        self.range_bars.append(bar)
+
+    def add_point(self, flow, pressure, sigma, test_type):
+        """확정된 측정점을 마커로 찍는다. 압력차는 절대값으로 그린다.
+
+        sigma 는 그 지점을 측정하는 동안의 압력 표준편차다.
+        """
         if test_type not in self.series:
             return
         # 그래프 좌표는 (x=압력차, y=풍량)
-        self.accumulated[test_type].append((abs(pressure), flow))
+        self.accumulated[test_type].append((abs(pressure), flow, sigma))
         self.series[test_type].append(abs(pressure), flow)
+        self._draw_range(abs(pressure), flow, sigma, test_type)
         # 새 점이 범위 밖일 수 있으므로 축을 다시 잡는다
         self.rescale()
         self.move_crosshair(flow, pressure)

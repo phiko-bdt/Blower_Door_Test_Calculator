@@ -9,6 +9,7 @@ import json
 import time
 import shutil
 import platform
+import statistics
 import traceback
 from datetime import datetime
 
@@ -34,7 +35,8 @@ class BackgroundTask(QThread):
     finished = pyqtSignal()  # 작업 완료 시그널
     error = pyqtSignal(str)  # 작업 오류 시그널
     progress = pyqtSignal(str)  # 진행 상황 시그널 (측정 중 창에 표시)
-    point = pyqtSignal(float, float, str)  # (풍량, 압력차, 시험종류) 확정 측정점 → 마커
+    # (풍량, 압력차, 압력 표준편차, 시험종류) 확정 측정점 → 마커 + 변동폭 가로선
+    point = pyqtSignal(float, float, float, str)
     position = pyqtSignal(float, float)  # (풍량, 압력차) 현재 위치 → 십자 포인터
 
     def __init__(self, task_type):
@@ -57,11 +59,11 @@ class BackgroundTask(QThread):
         return calculation.duty_to_flow(duty, self.fan_coeff, self.num_fans,
                                         self.task_type)
 
-    def report_point(self, duty, pressure):
-        """확정된 측정점을 마커로 찍는다."""
+    def report_point(self, duty, pressure, sigma=0.0):
+        """확정된 측정점을 마커로 찍는다. sigma 는 측정 중 압력 변동폭."""
         flow = self.duty_flow(duty)
         if flow is not None:
-            self.point.emit(flow, abs(pressure), self.task_type)
+            self.point.emit(flow, abs(pressure), sigma, self.task_type)
 
     def report_position(self, duty, pressure):
         """제어 중 현재 위치를 십자 포인터로만 표시한다 (마커는 찍지 않음)."""
@@ -87,7 +89,15 @@ class BackgroundTask(QThread):
                 self.report_position(duty, p)
 
     def live_measure(self, duty, seconds):
-        """seconds 동안 압력을 읽어 평균을 반환하며, 그 사이 십자도 실시간 갱신한다."""
+        """seconds 동안 압력을 읽어 평균과 변동폭을 반환한다.
+
+        그 사이 십자 포인터도 실시간 갱신한다.
+        반환: (평균, 표준편차, 최소, 최대). 표본이 없으면 전부 0.
+
+        0 기류 보정을 생략하는 운용이라 바람의 영향이 결과에 그대로 들어온다.
+        변동폭을 함께 남겨 어느 지점이 흔들린 상태에서 측정됐는지 그래프와
+        기록으로 확인할 수 있게 한다.
+        """
         samples = []
         deadline = time.time() + seconds
         while time.time() < deadline:
@@ -95,7 +105,12 @@ class BackgroundTask(QThread):
             if p is not None:
                 samples.append(p)
                 self.report_position(duty, p)
-        return sum(samples) / len(samples) if samples else 0.0
+        if not samples:
+            return 0.0, 0.0, 0.0, 0.0
+        mean = sum(samples) / len(samples)
+        # 표본 1개면 stdev 가 예외를 낸다
+        sigma = statistics.stdev(samples) if len(samples) > 1 else 0.0
+        return mean, sigma, min(samples), max(samples)
 
     def run(self):
         try:
@@ -161,6 +176,9 @@ class BackgroundTask(QThread):
         # 측정
         measuring = {}
         measuring["measured_value"] = []
+        # 지점별 압력 변동폭. measured_value 의 [압력, duty] 형식은 계산부가
+        # 그대로 언팩하므로 건드리지 않고, 부가 정보는 여기에 따로 남긴다.
+        measuring["pressure_spread"] = []
         # 온습도, 대기압
         measuring["temperature"] = 20
         measuring["relative_humidity"] = 50
@@ -220,10 +238,13 @@ class BackgroundTask(QThread):
             # 대기·측정 내내 실시간으로 십자 포인터를 갱신한다
             self.live_wait(d, settle)
             self.report(f"[{i}/{total}] 팬 세기 {d}% — 압력 측정 중… ({MEASURE_SECONDS}초)")
-            p = self.live_measure(d, MEASURE_SECONDS)
-            self.report(f"[{i}/{total}] 팬 세기 {d}% — 측정 완료: {p:.1f} Pa")
+            p, sigma, p_min, p_max = self.live_measure(d, MEASURE_SECONDS)
+            self.report(f"[{i}/{total}] 팬 세기 {d}% — 측정 완료: "
+                        f"{p:.1f} Pa (변동 ±{sigma:.1f})")
             measuring["measured_value"].append([p, d])
-            self.report_point(d, p)
+            measuring["pressure_spread"].append(
+                {"duty": d, "std": sigma, "min": p_min, "max": p_max})
+            self.report_point(d, p, sigma)
             before = d
 
         # 종료 0 기류 압력 측정 # 현재 버전에서는 생략

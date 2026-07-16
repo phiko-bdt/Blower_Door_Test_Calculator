@@ -85,7 +85,44 @@ def temperature_and_humidity(port='/dev/ttyUSB1', baudrate=9600):
     return ser
 
 
+# 압력 센서 Modbus 프레임 규격 (Lefoo, 홀딩 레지스터 1개 읽기)
+SENSOR_ADDRESS = 0x01   # 슬레이브 주소
+SENSOR_FUNCTION = 0x03  # read holding registers
+SENSOR_BYTE_COUNT = 0x02
+RESPONSE_SIZE = 7       # 주소 1 + 기능 1 + 바이트수 1 + 값 2 + CRC 2
+
+
+def _modbus_crc(payload):
+    """Modbus RTU CRC16 값을 계산한다."""
+    crc = crcmod.predefined.Crc('modbus')
+    crc.update(payload)
+    return crc.crcValue
+
+
+def _parse_pressure_frame(response):
+    """응답 프레임을 검증하고 원시 측정값을 돌려준다. 못 믿을 프레임이면 None.
+
+    예전에는 CRC 를 언팩만 하고 버려서, 프레임이 어긋나 읽힌 쓰레기 7바이트도
+    struct.unpack 만 성공하면 그대로 평균에 섞였다. 이게 이따금 튀던 값의
+    정체다. 아웃라이어를 사후에 걸러내는 대신 여기서 원인을 막는다.
+    """
+    if len(response) != RESPONSE_SIZE:
+        return None
+
+    address, function, byte_count, value = struct.unpack('>BBBh', response[:5])
+    # CRC 는 전선 위에서 리틀엔디언이라 '<H' 로 읽으면 계산값과 바로 비교된다
+    (crc_received,) = struct.unpack('<H', response[5:7])
+
+    if _modbus_crc(response[:5]) != crc_received:
+        return None  # 전송 중 깨졌거나 프레임이 어긋났다
+    if (address, function, byte_count) != (SENSOR_ADDRESS, SENSOR_FUNCTION,
+                                           SENSOR_BYTE_COUNT):
+        return None  # 다른 장치·다른 응답 (CRC 가 우연히 맞는 경우까지 차단)
+    return value
+
+
 def pressure_read(average_time=0.1, port='/dev/ttyUSB0', baudrate=9600, test=True):
+    """압력을 average_time 동안 반복 측정해 평균(Pa)으로 돌려준다."""
     # 테스트 모드
     if test:
         import random
@@ -100,31 +137,29 @@ def pressure_read(average_time=0.1, port='/dev/ttyUSB0', baudrate=9600, test=Tru
     average = []
     # 데이터 요청 값
     data = b'\x01\x03\x00\x01\x00\x01'
-    # 모드버스 통신을 위한 CRC 계산
-    crc16 = crcmod.predefined.Crc('modbus')
-    crc16.update(data)
-    crc_bytes = crc16.digest()
-    crc_bytes_reversed = crc_bytes[::-1]
-    # 데이터 요청 값 + CRC
-    data += crc_bytes_reversed
+    # 모드버스 통신을 위한 CRC (전선 위에서는 리틀엔디언이라 뒤집어 붙인다)
+    data += struct.pack('<H', _modbus_crc(data))
     # 센서가 응답하지 않으면 average 가 비어 있어 종료 조건을 영영 만족하지 못한다.
     # 무한 대기로 GUI 가 멈추지 않도록 상한을 둔다.
     deadline = time_start + max(average_time * 3, 5)
+    rejected = 0
 
     # 반복 측정
     try:
         while True:
+            # 앞선 응답의 잔여 바이트가 남아 있으면 다음 프레임이 어긋나 읽힌다.
+            # 요청 전에 입력 버퍼를 비워 매번 프레임 경계에서 시작한다.
+            ser.reset_input_buffer()
             # 데이터 송신
             ser.write(data)
             # 데이터 수신
-            response = ser.read(7)
-            try:
-                # 데이터 분해
-                _, _, _, value, _ = struct.unpack('>BBBhH', response)
+            response = ser.read(RESPONSE_SIZE)
+            value = _parse_pressure_frame(response)
+            if value is None:
+                rejected += 1
+            else:
                 # 데이터 축적
                 average.append(value)
-            except struct.error:
-                pass
 
             # 데이터 평균값 계산
             if time.time() - time_start >= average_time and len(average):
@@ -134,6 +169,13 @@ def pressure_read(average_time=0.1, port='/dev/ttyUSB0', baudrate=9600, test=Tru
                 return average_pressure/10
 
             if time.time() >= deadline:
+                # 응답이 아예 없는 것과, 오고는 있는데 전부 깨진 것을 구분해
+                # 알린다 (후자는 배선 노이즈·보레이트 불일치를 의심할 일이다).
+                if rejected:
+                    raise SensorTimeout(
+                        f"압력 센서({port}) 응답을 신뢰할 수 없습니다 "
+                        f"(깨진 프레임 {rejected}개). 배선 노이즈와 "
+                        "통신 속도 설정을 확인하세요.")
                 raise SensorTimeout(
                     f"압력 센서({port})가 응답하지 않습니다. "
                     "센서 연결과 전원을 확인하세요.")
