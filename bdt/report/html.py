@@ -12,6 +12,8 @@ import html
 import shutil
 import subprocess
 
+from bdt import paths
+
 
 # ── 데이터 포맷 ─────────────────────────────────────────────
 def _num(value, digits=2):
@@ -304,7 +306,7 @@ def render_pdf(html_text, pdf_path, workdir=None):
 
 
 def make_report_pdf(conditions, report, pdf_path,
-                    graph_path="graph.png", font_path="NanumSquare_acL.ttf",
+                    graph_path=paths.GRAPH_PNG, font_path=paths.FONT_PATH,
                     workdir=None):
     """조건·결과 데이터로 HTML 성적서를 만들어 PDF 로 렌더한다."""
     html_text = build_html(conditions, report, graph_path, font_path)

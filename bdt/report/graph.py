@@ -9,6 +9,8 @@ from datetime import datetime
 from matplotlib import font_manager
 from matplotlib.ticker import ScalarFormatter, LogLocator
 
+from bdt import paths
+
 
 # 보고서·실시간 뷰와 같은 톤
 C_DEP = "#2a78d6"      # 감압 (blue)
@@ -112,7 +114,7 @@ def _draw_series(ax, label, res, color, marker, limits, fonts, show_ylabel=True)
 
 
 def plot_graph(resultsd, resultsp, report):
-    font_path = "./NanumSquare_acL.ttf"
+    font_path = paths.FONT_PATH
     font_manager.fontManager.addfont(font_path)
     fonts = (
         font_manager.FontProperties(fname=font_path, size=9),     # tick
@@ -156,17 +158,17 @@ def plot_graph(resultsd, resultsp, report):
 
     # 백업 + 사용 그래프 저장
     now = datetime.now().strftime("%d%m%Y-%H%M%S")
-    os.makedirs("graphs", exist_ok=True)
-    fig.savefig(f"./graphs/graph_{now}.png", dpi=300, bbox_inches="tight",
+    graphs_dir = paths.ensure_dir(paths.GRAPHS_DIR)
+    fig.savefig(os.path.join(graphs_dir, f"graph_{now}.png"), dpi=300, bbox_inches="tight",
                 facecolor="white")
-    fig.savefig("./graph.png", dpi=300, bbox_inches="tight", facecolor="white")
+    fig.savefig(paths.GRAPH_PNG, dpi=300, bbox_inches="tight", facecolor="white")
     plt.close(fig)
 
 
 if __name__ == "__main__":
-    with open("conditions.json", "r") as file:
+    with open(paths.CONDITIONS_JSON, "r") as file:
         conditions = json.load(file)
-    with open("./calculation_raw.json", "r") as file:
+    with open(paths.CALCULATION_RAW_JSON, "r") as file:
         calculation_raw = json.load(file)
 
     if conditions.get("depressurization") and conditions.get("pressurization"):
