@@ -2,7 +2,7 @@
 Type=Application
 Name=BlowerDoorTest
 Comment=Run blower door test GUI
-Exec=/usr/bin/python3 /home/phiko/Blower_Door_Test_Calculator/user_interface.py
+Exec=/usr/bin/python3 -m bdt
 Path=/home/phiko/Blower_Door_Test_Calculator
 Icon=/home/phiko/Blower_Door_Test_Calculator/icon.png
 Terminal=true
