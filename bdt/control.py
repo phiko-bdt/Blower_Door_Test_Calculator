@@ -12,18 +12,36 @@ from bdt import hardware
 
 
 def duty_transformation(input_value, min_value, max_value):
+    """PID 의 duty(0~100)를 팬이 실제로 받는 duty 로 옮긴다.
+
+    PID 는 0~100 을 다루지만 팬에는 가용 구간이 따로 있다. 그 구간의 양 끝을
+    (min_value, max_value) 로 받아 선형으로 눌러 넣는다.
+
+    **min_value > max_value 인 역방향 매핑은 지금 쓰이지 않지만 의도적으로
+    남겨둔 것이다.** 리버서블 팬(구 OF-OD172SAP-Reversible) 시절, 한 PWM 선의
+    duty 구간으로 회전 방향까지 인코딩하는 컨트롤러를 쓸 때 필요했다
+    (가압 10~45% = 정방향이라 duty 가 커질수록 값이 작아진다). 현재 팬
+    (9GV2048P0G201)은 비리버서블이라 fan_coefficients.json 의 duty_range 가
+    전부 [20, 100] 이고, 방향은 팬을 물리적으로 뒤집어 만든다 — 그래서 이
+    분기는 도달하지 않는다. 리버서블 팬으로 돌아갈 여지를 두려고 유지하므로
+    '안 쓰는 코드'로 보고 지우지 말 것.
+
+    같은 이유로 fan_coefficients.json 의 forward/reverse 계수도 현재 값이
+    서로 같다 (방향 구분이 무의미해진 상태).
+    """
     # 입력 값이 최소와 최대 값 사이에 있는지 확인
     if not 0 <= input_value <= 100:
         raise ValueError("Input value should be between 0 and 100")
 
     # 변환 함수
     if min_value > max_value:
-        # Forward flow일 때, 0~100까지를 45~10으로 변환
+        # 역방향 매핑 (리버서블 팬 전용, 현재 미사용 — 위 독스트링 참고).
+        # 예: (45, 10) → PID 0~100 이 실제 45~10 으로 내려간다.
         min_value, max_value = max_value, min_value
         transformed_value = (1 - input_value / 100) * (max_value - min_value) + min_value
 
     else:
-        # Reverse flow일 때, 0~100까지를 55~90으로 변환
+        # 정방향 매핑 (현재 경로). 예: (20, 100) → PID 0~100 이 실제 20~100.
         transformed_value = (input_value / 100) * (max_value - min_value) + min_value
 
     return round(transformed_value)

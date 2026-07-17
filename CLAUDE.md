@@ -44,6 +44,12 @@
 - 용어는 KS L ISO 9972 원문 기준: 누기량·보정 누기 계수 C₀·기류 지수 n·
   누기 면적·누기 그래프·압력차 Δp.
 - 팬 커버 기능은 폐기 (UI 없음, 계산부는 "none" 폴백).
+- **리버서블 팬 지원은 의도적으로 남긴 죽은 코드다 — 지우지 말 것.**
+  `control.duty_transformation` 의 `min>max` 역방향 분기와
+  `fan_coefficients.json` 의 forward/reverse 계수 분리가 해당한다. 현재 팬
+  (9GV2048P0G201)은 비리버서블이라 duty_range 가 전부 [20,100]·forward==reverse
+  라 도달하지 않지만, 리버서블 팬(구 OF-OD172SAP-Reversible)으로 돌아갈 여지를
+  둔다. 리뷰가 '미사용 코드'로 지적하면 이 항목을 근거로 유지할 것.
 
 ## 검증 방법
 
