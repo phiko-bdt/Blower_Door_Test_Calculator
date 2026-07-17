@@ -20,20 +20,17 @@ from bdt import control
 from bdt import calculation
 from bdt.report import graph, html
 from bdt import paths
+from bdt import settings
 from bdt.config import TEST_MODE
 
 
-# 시험 조건
-TARGET_PRESSURE = 70      # 측정 시작점으로 삼을 목표 압력차 (Pa)
-MEASURE_SECONDS = 10      # 한 지점에서 압력을 평균낼 시간 (초)
-# duty 를 1 옮길 때마다 기다릴 안정화 시간 (초).
-# duty 차가 클수록 압력이 자리 잡는 데 오래 걸려 차이에 비례해 기다린다.
-SETTLE_SECONDS_PER_DUTY = 2
-# 이보다 낮은 압력의 측정점은 바람 노이즈가 지배해 신뢰도가 낮다
-# (KS L ISO 9972 는 영기류 압력의 10배부터 측정하도록 한다).
-# 목표 압력 도달 실패 후 max duty 스윕에서 하위 지점이 여기 걸릴 수 있다.
-# 결과값은 바꾸지 않고 경고만 한다 — 회귀 제외는 별도 결정이 필요하다.
-LOW_PRESSURE_WARN_PA = 10
+# 시험 조건은 bdt.settings 가 갖는다 (설정 화면에서 고칠 수 있다).
+# 값을 모듈 수준에 캐시하지 않고 시험을 시작할 때마다 읽어, 방금 바꾼 설정이
+# 다음 시험에 바로 먹게 한다.
+
+
+class TestImpossible(Exception):
+    """이 조건에서는 시험을 수행할 수 없다 (압력을 제어할 수 없음)."""
 
 
 class TestCancelled(Exception):
@@ -53,6 +50,12 @@ class BackgroundTask(QThread):
     raw_position = pyqtSignal(float, float)
     # 목표 압력 조절(get_duty)이 끝나고 지점 측정으로 넘어간다 → 페이지 전환
     targeted = pyqtSignal()
+    # (종류, 경과초, 목표초) — 수렴/실패 유지 카운트. 종류는 "converge"/"fail".
+    # 조절 화면이 유지 구간을 색칠하고 카운트를 보여주는 데 쓴다.
+    hold = pyqtSignal(str, float, float)
+    # 이 조건에서는 시험 자체가 불가능하다 (장비 고장이 아니라 현장 조건 문제).
+    # error 와 섞으면 "장비에 문제가 있나" 로 읽히므로 따로 알린다.
+    impossible = pyqtSignal(str)
 
     def __init__(self, task_type):
         super().__init__()
@@ -86,6 +89,10 @@ class BackgroundTask(QThread):
             return None
         return calculation.duty_to_flow(duty, self.fan_coeff, self.num_fans,
                                         self.task_type)
+
+    def report_hold(self, kind, elapsed, total):
+        """get_duty 의 수렴·실패 유지 카운트를 화면에 전달한다."""
+        self.hold.emit(kind, float(elapsed), float(total))
 
     def report_point(self, duty, pressure, sigma=0.0):
         """확정된 측정점을 마커로 찍는다. sigma 는 측정 중 압력 변동폭."""
@@ -159,6 +166,62 @@ class BackgroundTask(QThread):
         sigma = statistics.stdev(samples) if len(samples) > 1 else 0.0
         return mean, sigma, min(samples), max(samples)
 
+    # 회귀선을 그으려면 서로 다른 압력의 지점이 최소 이만큼은 있어야 한다.
+    # (계산부는 자유도 N-2 로 신뢰구간을 낸다 — 2점이면 오차가 정의되지 않는다)
+    MIN_SWEEP_POINTS = 3
+
+    @staticmethod
+    def _sweep_points(start, end, count):
+        """start(가장 높은 압력)에서 end 까지 count 등분한 팬 세기 목록.
+
+        round() 때문에 구간이 좁으면 같은 duty 가 여러 번 나온다. 중복을 남기면
+        같은 지점을 두 번 재고(측정 시간 낭비), 계산부는 N 을 그대로 믿어
+        신뢰구간이 실제보다 좁게 나온다 — 없는 정보가 있는 척한다. 중복은
+        지우고 실제로 서로 다른 지점만 남긴다.
+
+        start 가 end 이하면(스윕할 구간이 없음) 빈 목록을 돌려준다. 호출부가
+        MIN_SWEEP_POINTS 로 판정한다.
+        """
+        if start <= end or count < 2:
+            return []
+        step = (start - end) / (count - 1)
+        points = [round(start - i * step) for i in range(count)]
+        unique = []
+        for p in points:
+            if p not in unique:
+                unique.append(p)
+        return unique
+
+    def _find_upper_duty(self, min_duty, max_duty, max_pressure,
+                         settle_per_duty):
+        """상한 압력을 넘지 않는 가장 높은 팬 세기를 찾는다.
+
+        팬을 최소로 낮춰도 목표를 넘는 공간에서만 쓴다. 이때 스윕은 최소에서
+        위로 갈 수밖에 없는데, 상한(기본 100 Pa)을 넘는 지점까지 재면 시험
+        압력 구간을 벗어난 점이 회귀에 섞인다. 그래서 최소부터 한 단계씩
+        올려보며 상한을 넘기 직전 세기를 스윕의 시작점으로 삼는다.
+
+        압력이 duty 에 대해 단조 증가한다는 가정이라 처음 넘는 지점에서 멈춘다
+        (바람으로 한 번 튀어도 그 아래는 안전한 구간이므로 손해는 없다).
+
+        반환: (스윕 시작 세기, 팬에 마지막으로 건 세기).
+        """
+        step = max(1, round((max_duty - min_duty) / 10))
+        upper = before = min_duty
+        d = min_duty + step
+        while d <= max_duty:
+            hardware.duty_set(d, test=TEST_MODE)
+            self.live_wait(d, abs(d - before) * settle_per_duty)
+            pressure = abs(self.live_measure(d, 2.0)[0])
+            before = d
+            self.report(f"팬 세기 {d}% — {pressure:.1f} Pa "
+                        f"(상한 {max_pressure:.0f} Pa)")
+            if pressure > max_pressure:
+                break
+            upper = d
+            d += step
+        return upper, before
+
     def run(self):
         try:
             if self.task_type == "depressurization":
@@ -175,6 +238,12 @@ class BackgroundTask(QThread):
                 # 오타·미등록 유형이 '조용한 성공'이 되면 흐름이 낡은 산출물로
                 # 다음 단계를 진행한다. 반드시 오류로 드러낸다.
                 raise RuntimeError(f"알 수 없는 작업 유형: {self.task_type!r}")
+        except TestImpossible as exc:
+            # 장비 결함이 아니라 현장 조건이 시험을 허락하지 않는 경우다.
+            # 팬만 세우고, 원인과 대처를 그대로 화면에 넘긴다.
+            self._stop_fan()
+            self.report("시험 불가 — 압력을 제어할 수 없습니다.")
+            self.impossible.emit(str(exc))
         except TestCancelled:
             # 사용자가 멈춘 것이니 오류가 아니다. 팬만 확실히 세운다.
             self._stop_fan()
@@ -222,6 +291,13 @@ class BackgroundTask(QThread):
         # 측정 모드에 따른 변수 설정
         # 9GV2048P0G201 fan only (formerly OF-OD172SAP-Reversible)
         zero_duty = 0
+        cfg = settings.load()
+        target = cfg["target_pressure"]
+        measure_seconds = cfg["measure_seconds"]
+        settle_per_duty = cfg["settle_seconds_per_duty"]
+        num_to_measure = int(cfg["num_points"])
+        low_warn = cfg["low_pressure_warn"]
+        max_pressure = cfg["max_pressure"]
 
         with open(paths.CONDITIONS_JSON, 'r') as f:
             conditions = json.load(f)
@@ -268,18 +344,22 @@ class BackgroundTask(QThread):
         # 압력 변동폭(pressure_spread)을 남겨 바람의 영향을 눈으로 볼 수 있게 한다.
 
         # 시험 시작
-        self.report(f"팬 속도를 조절해 목표 압력({TARGET_PRESSURE} Pa)을 맞추는 중…")
+        self.report(f"팬 속도를 조절해 목표 압력({target:.0f} Pa)을 맞추는 중…")
         # 목표 압력에 해당하는 PWM duty 값 추출
-        (duty, success, pressure) = control.get_duty(target=TARGET_PRESSURE,
-                                                     delay=5,
-                                                     average_time=0.5,
-                                                     control_limit=10,
-                                                     duty_min=min_duty,
-                                                     duty_max=max_duty,
-                                                     test=TEST_MODE,
-                                                     progress=self.report,
-                                                     on_point=self.report_position,
-                                                     check_cancelled=self._check_cancelled)
+        (duty, success, pressure, saturated) = control.get_duty(
+            target=target,
+            delay=5,
+            average_time=0.5,
+            control_limit=10,
+            duty_min=min_duty,
+            duty_max=max_duty,
+            test=TEST_MODE,
+            progress=self.report,
+            on_point=self.report_position,
+            check_cancelled=self._check_cancelled,
+            tolerance_percent=cfg["tolerance_percent"],
+            hold_seconds=cfg["hold_seconds"],
+            on_hold=self.report_hold)
         # get_duty 가 팬에 마지막으로 건 duty. 첫 측정 지점의 안정화 시간을
         # 계산할 기준이며, 실패 시 duty 를 max 로 덮어써도 팬의 실제 상태는
         # 이 값이므로 따로 들고 있어야 한다.
@@ -287,20 +367,58 @@ class BackgroundTask(QThread):
 
         if success:
             self.report(f"목표 압력 도달 — 팬 세기 {duty}%, 압력 {pressure:.1f} Pa")
+        elif saturated == "min":
+            # 팬을 최소로 낮춰도 목표를 넘는다 = 아주 기밀한 공간이거나 외풍.
+            # 예전엔 이 경우에도 최대 duty 로 올려 스윕했는데, 압력이 이미
+            # 높은데 팬을 더 돌리는 정반대 처리였다.
+            if pressure > max_pressure:
+                # 최소에서도 상한을 넘으면 압력을 제어할 방법이 없다.
+                raise TestImpossible(
+                    f"팬을 최소({min_duty}%)로 낮춰도 압력이 "
+                    f"{pressure:.1f} Pa 로 시험 가능 상한({max_pressure:.0f} Pa)을 "
+                    "넘습니다.\n\n외풍이 심하거나 공간이 지나치게 기밀해 압력을 "
+                    "제어할 수 없습니다. 기상 조건을 확인하고 다시 시도하세요.")
+            self.report(f"팬 최소({min_duty}%)에서도 목표 {target:.0f} Pa 를 넘습니다 "
+                        f"(현재 {pressure:.1f} Pa) — 측정 가능한 팬 세기 구간을 "
+                        "찾는 중…")
+            # 최소가 이 공간에서 낼 수 있는 가장 낮은 압력이다. 스윕은 최소에서
+            # 위로 갈 수밖에 없는데, 그렇다고 최대까지 올리면 압력이 시험 가능
+            # 상한을 한참 넘는다 — 상한을 넘지 않는 가장 높은 팬 세기를 찾아
+            # 거기서부터 최소까지를 훑는다.
+            duty, fan_duty = self._find_upper_duty(
+                min_duty, max_duty, max_pressure, settle_per_duty)
+            if duty <= lowest_duty:
+                raise TestImpossible(
+                    f"팬 최소({min_duty}%)에서 {pressure:.1f} Pa 인데, 한 단계만 "
+                    f"올려도 시험 가능 상한({max_pressure:.0f} Pa)을 넘습니다.\n\n"
+                    "측정할 수 있는 팬 세기 구간이 없습니다. 외풍이 심하거나 "
+                    "공간이 지나치게 기밀한 상태입니다.")
+            self.report(f"팬 세기 {lowest_duty}~{duty}% 구간에서 측정을 진행합니다")
         else:
             # 목표 압력 도달 실패 = 누기량/침기량 대비 압력형성을 위한 풍량 부족.
             # 최대 duty 부터 min duty 전까지 훑는다.
-            self.report(f"{TARGET_PRESSURE} Pa 도달 실패 — "
+            self.report(f"{target:.0f} Pa 도달 실패 — "
                         f"최대 팬 세기({max_duty}%)로 측정을 진행합니다")
             duty = max_duty
 
         # 목표 압력 조절이 끝났다 — 화면을 측정 차트로 넘긴다
         self.targeted.emit()
 
-        # 측정 범위 설정 — 목표 압력 지점에서 최저 측정 지점까지 10등분
-        num_to_measure = 10
-        step = (duty - lowest_duty) / (num_to_measure - 1)  # 간격 계산
-        duty_range = [round(duty - i * step) for i in range(num_to_measure)]
+        # 측정 범위 설정 — 시작 지점(가장 높은 압력)에서 최저 지점까지 등분해
+        # 내려간다. 팬 최소에서도 목표를 넘은 경우엔 시작 지점이 목표 압력이
+        # 아니라 위에서 찾은 '상한을 넘지 않는 최고 세기'일 뿐, 훑는 방향은 같다.
+        duty_range = self._sweep_points(duty, lowest_duty, num_to_measure)
+        if len(duty_range) < self.MIN_SWEEP_POINTS:
+            # 시작 지점이 최저 지점에 붙어 있다 = 훑을 구간이 없다.
+            # 아주 기밀한 공간에서 팬 최소만으로 이미 목표 압력에 닿으면
+            # 성공 경로로도 여기에 온다. 그대로 두면 같은 duty 를 열 번 재고,
+            # 압력이 거의 변하지 않는 점들로 회귀해 노이즈를 기울기로 읽는다.
+            raise TestImpossible(
+                f"측정할 수 있는 팬 세기 구간이 너무 좁습니다 "
+                f"(시작 {duty}% · 최저 {lowest_duty}%).\n\n"
+                "팬을 거의 최소로 돌려도 목표 압력에 닿을 만큼 기밀한 공간입니다. "
+                "압력을 여러 단계로 나눠 측정할 수 없어 기류 지수를 구할 수 "
+                "없습니다.")
 
         # 데이터 측정.
         # get_duty 가 이미 잰 값을 여기에 미리 넣지 않는다. 넣으면 첫 지점의
@@ -314,16 +432,16 @@ class BackgroundTask(QThread):
             for i, d in enumerate(duty_range, start=1):
                 hardware.duty_set(d, test=TEST_MODE)
                 # duty 를 많이 움직일수록 압력이 자리 잡는 데 오래 걸린다
-                settle = abs(before - d) * SETTLE_SECONDS_PER_DUTY
+                settle = abs(before - d) * settle_per_duty
                 self.report(f"[{i}/{total}] 팬 세기 {d}% — 압력 안정화 대기 중… ({settle}초)")
                 # 대기·측정 내내 실시간으로 십자 포인터를 갱신한다
                 self.live_wait(d, settle)
-                self.report(f"[{i}/{total}] 팬 세기 {d}% — 압력 측정 중… ({MEASURE_SECONDS}초)")
-                p, sigma, p_min, p_max = self.live_measure(d, MEASURE_SECONDS)
+                self.report(f"[{i}/{total}] 팬 세기 {d}% — 압력 측정 중… ({measure_seconds:.0f}초)")
+                p, sigma, p_min, p_max = self.live_measure(d, measure_seconds)
                 self.report(f"[{i}/{total}] 팬 세기 {d}% — 측정 완료: "
                             f"{p:.1f} Pa (변동 ±{sigma:.1f})")
-                if abs(p) < LOW_PRESSURE_WARN_PA:
-                    self.report(f"⚠ 측정 압력이 {LOW_PRESSURE_WARN_PA} Pa 미만입니다 "
+                if abs(p) < low_warn:
+                    self.report(f"⚠ 측정 압력이 {low_warn:.0f} Pa 미만입니다 "
                                 "— 바람 영향이 커 이 지점의 신뢰도가 낮습니다")
                 measuring["measured_value"].append([p, d])
                 measuring["pressure_spread"].append(

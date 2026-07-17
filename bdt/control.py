@@ -47,7 +47,8 @@ def duty_transformation(input_value, min_value, max_value):
     return round(transformed_value)
 
 def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=100, test=True,
-             progress=None, on_point=None, check_cancelled=None):
+             progress=None, on_point=None, check_cancelled=None,
+             tolerance_percent=10.0, hold_seconds=10.0, on_hold=None):
     '''
     [2023-11-18]
     reversible fan 사용 시 pwm duty
@@ -61,6 +62,13 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
     check_cancelled: 중단 요청을 확인하는 콜백(중단이면 예외를 던진다).
         목표 압력에 닿지 못하면 이 루프가 오래 돌 수 있어, 그동안에도 사용자가
         시험을 멈출 수 있어야 한다.
+    tolerance_percent: 수렴 허용 오차(목표 대비 %). 예전엔 target/10 으로 코드에
+        박혀 있었다 — 목표를 바꿔도 비율은 못 바꿨다.
+    hold_seconds: 허용 오차 안에 이만큼 연속으로 머물러야 수렴. 실패 판정에도
+        같은 시간을 쓴다.
+    on_hold: (종류, 경과초, 목표초) 콜백. 종류는 "converge" 또는 "fail".
+        화면이 유지 구간을 색칠하고 카운트를 보여주는 데 쓴다.
+        조건이 깨지면 경과초 0 으로 알린다.
     '''
     def notify(message):
         if progress:
@@ -76,17 +84,21 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
         if check_cancelled:
             check_cancelled()
 
+    def notify_hold(kind, elapsed):
+        if on_hold:
+            on_hold(kind, elapsed, hold_seconds)
+
     # 테스트 모드
     if test:
-        return (duty_max, True, target)
+        return (duty_max, True, target, None)
     # 현재 압력 값 측정 및 초기값 세팅
     current = abs(hardware.pressure_read(0.1, test=test))
     duty = 0
 
     # 압력 수렴 조건
     convergence_time = 0
-    pressure_threshold = target/10
-    duration = 10
+    pressure_threshold = target * tolerance_percent / 100.0
+    duration = hold_seconds
     # duty 수렴 조건
     window = []
     window_size = 50
@@ -143,10 +155,12 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
 
         if error_pressure < pressure_threshold: # and error_duty < max(2, duty/10):
             convergence_time += time_diff
+            notify_hold("converge", convergence_time)
             notify(f"팬 세기 {duty_real}% — 압력 {current:.1f} / 목표 {target} Pa "
                    f"· 안정화 중 ({convergence_time:.0f}/{duration}초)")
         else:
             convergence_time = 0
+            notify_hold("converge", 0)
             notify(f"팬 세기 {duty_real}% — 압력 {current:.1f} / 목표 {target} Pa "
                    f"· 조절 중 (오차 {error_pressure:.1f} Pa)")
 
@@ -155,7 +169,7 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
             notify(f"목표 압력 {target} Pa 도달 (측정값 {current:.1f} Pa)")
             # 실제 duty값으로 변환 후 반환
             duty_real = duty_transformation(duty, duty_min, duty_max)
-            return (duty_real, True, current)
+            return (duty_real, True, current, None)
 
         # duty 가 한계에 붙었는데 수렴 문턱(pressure_threshold)을 넘는 오차가
         # 남아 있으면 실패로 센다. 예전엔 실패 문턱이 20 Pa 로 따로 있어서
@@ -165,6 +179,7 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
             notify(f"팬을 최대로 돌려도 목표 {target} Pa에 못 미칩니다 "
                    f"(현재 {current:.1f} Pa) — 누기량이 많거나 개구부가 열려 있는지 확인하세요")
             failure_time += time_diff
+            notify_hold("fail", failure_time)
         elif duty == 0 and error_pressure >= pressure_threshold:
             # PID duty 0 은 팬 정지가 아니라 duty_min(팬이 도는 최소 세기)이다.
             # 예전엔 '팬을 멈춰도'라고 알려서, 실제로는 팬이 최소로 돌고 있는데
@@ -173,12 +188,18 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
                    f"넘습니다 (현재 {current:.1f} Pa) — 외풍이나 센서 상태를 "
                    "확인하세요")
             failure_time += time_diff
+            notify_hold("fail", failure_time)
         else:
             failure_time = 0
+            notify_hold("fail", 0)
 
         if failure_time >= duration:
             current = abs(hardware.pressure_read(final_measure_time, test=test))
             notify(f"목표 압력 조절 실패 (최종 {current:.1f} Pa)")
-            # 실제 duty값으로 변환 후 반환
+            # 실제 duty값으로 변환 후 반환.
+            # saturated 는 어느 한계에 붙어 실패했는지다 — 팬 최대인데 목표에
+            # 못 미친 경우와, 팬 최소인데도 목표를 넘긴 경우는 뒤처리가 정반대라
+            # 호출부가 구분할 수 있어야 한다.
             duty_real = duty_transformation(duty, duty_min, duty_max)
-            return (duty_real, False, current)
+            saturated = "max" if duty == 100 else "min"
+            return (duty_real, False, current, saturated)

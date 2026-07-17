@@ -26,10 +26,11 @@ os.chdir(ROOT)
 from PyQt6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 from PyQt6.QtCore import QTimer  # noqa: E402
 
-from bdt import hardware, control, paths, tasks  # noqa: E402
+from bdt import hardware, control, paths, settings, tasks  # noqa: E402
 
 DATA_FILES = ("conditions.json", "depressurization_raw.json",
-              "pressurization_raw.json", "calculation_raw.json")
+              "pressurization_raw.json", "calculation_raw.json",
+              "settings.json", "fan_coefficients.json")
 
 RESULTS = []
 
@@ -60,11 +61,16 @@ def install_mocks():
         if kw.get("on_point"):
             for i in range(5):
                 kw["on_point"](68, 50 + i)
-        return (68, True, 65.8)
+        if kw.get("on_hold"):
+            kw["on_hold"]("converge", 10.0, 10.0)
+        # (팬 세기, 성공 여부, 압력, 포화된 쪽) — saturated 는 성공이면 None
+        return (68, True, 65.8, None)
 
     control.get_duty = fast_get_duty
-    tasks.SETTLE_SECONDS_PER_DUTY = 0
-    tasks.MEASURE_SECONDS = 0.12
+    # 측정 기준값은 이제 모듈 상수가 아니라 settings.json 에서 온다.
+    # 스모크는 대기 없이 짧게 재도록 설정 파일을 깔아 둔다 (원본은 복원된다).
+    settings.save(dict(settings.DEFAULTS, measure_seconds=1.0,
+                       settle_seconds_per_duty=0.0, num_points=5))
     tasks.BackgroundTask.open_pdf = lambda self, p: None
     return state
 
@@ -118,7 +124,7 @@ def main():
                 if cc:
                     cc()
                 time.sleep(0.1)
-            return (68, True, 65.8)
+            return (68, True, 65.8, None)
 
         control.get_duty = slow_get_duty
         w2 = MainWindow(); w2.resize(1180, 720); w2.show()
@@ -175,6 +181,133 @@ def main():
             check("없는 포트 → SensorTimeout", False, type(exc).__name__)
         install_mocks()  # reload 가 모킹을 지웠으므로 복구
 
+        # ── 3-2. 팬 최소에서도 상한 초과 → 시험 불가 ────────────
+        # (사고: 압력이 이미 목표를 넘었는데 팬을 최대로 올려 스윕)
+        print("3-2. 시험 불가 경로")
+
+        def min_saturated(**kw):
+            # 팬 최소에서 목표를 넘긴 채 실패 — 압력은 상한(100 Pa) 초과
+            return (kw["duty_min"], False, 132.0, "min")
+
+        control.get_duty = min_saturated
+        t = tasks.BackgroundTask("depressurization")
+        seen = {}
+        t.impossible.connect(lambda m: seen.setdefault("impossible", m))
+        t.error.connect(lambda m: seen.setdefault("error", m))
+        t.run()
+        check("최소 포화 + 상한 초과 → 시험 불가", "impossible" in seen
+              and "error" not in seen, seen.get("impossible", "")[:40])
+
+        # 상한 안이면 시험은 진행하되, 스윕 시작점을 탐색으로 정해야 한다
+        def min_saturated_ok(**kw):
+            return (kw["duty_min"], False, 88.0, "min")
+
+        control.get_duty = min_saturated_ok
+        t = tasks.BackgroundTask("depressurization")
+        swept = []
+        t.point.connect(lambda f, p, s, k: swept.append(p))
+        errs = []
+        t.error.connect(errs.append)
+        t.impossible.connect(errs.append)
+        t.run()
+        # 모킹 압력은 duty 에 비례(15 + 0.75×duty)해 100 Pa 를 넘지 않으므로
+        # 상한 탐색은 최대까지 올라가고 측정은 정상 완료된다
+        check("최소 포화 + 상한 이내 → 측정 진행", not errs and len(swept) >= 5,
+              f"{len(swept)}점")
+
+        # 아주 기밀한 공간: 팬 최소만으로 목표에 도달(성공) → 훑을 구간이 없다.
+        # (사고: step 이 음수가 돼 같은 duty 를 열 번 재고, 압력이 거의 같은
+        #  점들로 회귀해 노이즈를 기울기로 읽은 성적서가 발행됨)
+        def success_at_min(**kw):
+            return (kw["duty_min"], True, 68.0, None)
+
+        control.get_duty = success_at_min
+        t = tasks.BackgroundTask("depressurization")
+        seen2 = {}
+        t.impossible.connect(lambda m: seen2.setdefault("impossible", m))
+        t.error.connect(lambda m: seen2.setdefault("error", m))
+        t.run()
+        check("최소에서 목표 도달 → 구간 없음으로 시험 불가",
+              "impossible" in seen2 and "error" not in seen2)
+
+        # 스윕 지점에 중복 duty 가 있으면 계산부가 N 을 부풀려 신뢰구간이 좁아진다
+        pts = tasks.BackgroundTask._sweep_points(28, 21, 10)
+        check("좁은 구간 스윕에 중복 없음",
+              len(pts) == len(set(pts)) and pts[0] == 28 and pts[-1] == 21,
+              str(pts))
+
+        # ── 3-3. 설정 저장 왕복 ─────────────────────────────────
+        print("3-3. 설정")
+        settings.save(dict(settings.DEFAULTS, target_pressure=60.0,
+                           tolerance_percent=5.0))
+        cfg = settings.load()
+        check("설정 저장·복원", cfg["target_pressure"] == 60.0
+              and abs(settings.tolerance_pa(cfg) - 3.0) < 1e-9,
+              f"±{settings.tolerance_pa(cfg)} Pa")
+        try:
+            settings.save(dict(settings.DEFAULTS, target_pressure=999.0))
+            check("범위 밖 설정 거부", False, "예외 없음")
+        except ValueError:
+            check("범위 밖 설정 거부", True)
+
+        # 상한이 목표보다 낮으면 정상 시험도 '시험 불가'가 된다 — 조합 검증
+        try:
+            settings.save(dict(settings.DEFAULTS, target_pressure=70.0,
+                               max_pressure=60.0))
+            check("상한 < 목표 조합 거부", False, "예외 없음")
+        except ValueError:
+            check("상한 < 목표 조합 거부", True)
+
+        # 일부만 넘긴 저장이 나머지를 기본값으로 되돌리면 현장 설정이 리셋된다
+        settings.save(dict(settings.DEFAULTS, hold_seconds=25.0))
+        settings.save({"target_pressure": 55.0})
+        check("부분 저장이 나머지를 보존", settings.load()["hold_seconds"] == 25.0,
+              f"hold_seconds = {settings.load()['hold_seconds']}")
+
+        # 파일이 dict 가 아니어도 load 가 터지지 않아야 한다
+        with open(paths.ROOT + "/settings.json", "w") as f:
+            f.write("5")
+        check("깨진 설정 파일 → 기본값",
+              settings.load()["target_pressure"] == settings.DEFAULTS["target_pressure"])
+
+        from bdt.pages import SettingsPage
+        settings.save(dict(settings.DEFAULTS, target_pressure=60.0))
+        sp = SettingsPage()
+        check("설정 페이지 값 표시",
+              sp.fields["target_pressure"].text() == "60",
+              sp.fields["target_pressure"].text())
+
+        # 팬 계수 저장이 검증에 걸려도 측정 기준값이 절반 저장되면 안 된다
+        # (사고: "저장 실패"라고 알리면서 목표 압력만 조용히 바뀜)
+        # 경고창은 모달이라 여기서 막으면 스모크가 영영 멈춘다
+        dialogs = []
+        QMessageBox.warning = staticmethod(
+            lambda *a, **k: dialogs.append(a[2] if len(a) > 2 else ""))
+        QMessageBox.information = staticmethod(lambda *a, **k: None)
+        sp.fields["target_pressure"].setText("45")
+        sp.fan_fields[("duty_range", "duty_min")].setText("100")
+        sp.fan_fields[("duty_range", "duty_max")].setText("20")
+        sp._save()
+        check("팬 계수 오류 시 부분 저장 없음",
+              settings.load()["target_pressure"] == 60.0 and bool(dialogs),
+              f"target = {settings.load()['target_pressure']}")
+
+        # 팬 계수 저장이 파일의 다른 항목을 지우지 않아야 한다
+        with open(paths.FAN_COEFFICIENTS_JSON) as f:
+            before_fan = json.load(f)
+        settings.save_fan_coefficients({
+            "forward": {"slope": 9.0, "intercept": 900.0},
+            "reverse": {"slope": 9.0, "intercept": 900.0},
+            "duty_range": [20, 100]})
+        with open(paths.FAN_COEFFICIENTS_JSON) as f:
+            after_fan = json.load(f)
+        check("팬 계수 저장이 다른 커버 보존",
+              set(after_fan) == set(before_fan)
+              and after_fan.get("high") == before_fan.get("high"))
+        # 원본 복원은 finally 의 백업 복원이 맡는다 (형식까지 그대로 돌린다)
+
+        install_mocks()  # 스모크용 빠른 설정으로 되돌린다
+
         # ── 4. 빈 측정 차트의 축 (씨앗 범위 유지) ────────────────
         print("4. 차트 경계 조건")
         from bdt.pages import LiveMeasurementChart
@@ -215,6 +348,10 @@ def main():
             src = os.path.join(backup, f)
             if os.path.exists(src):
                 shutil.copy(src, f)
+            elif os.path.exists(f):
+                # 스모크가 만들어낸 파일이다 (예: settings.json). 남겨두면
+                # 스모크용 값이 실제 시험 설정으로 굳는다.
+                os.remove(f)
         shutil.rmtree(backup, ignore_errors=True)
         print("(실데이터 복원 완료)")
 

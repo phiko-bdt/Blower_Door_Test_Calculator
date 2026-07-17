@@ -27,6 +27,7 @@ from bdt.widgets import PageHeader, SectionTitle
 class InputInitialValues(QWidget):
     """시험 조건 입력 페이지."""
     saved = pyqtSignal()  # 조건 저장 완료 → 다음 단계로
+    settings_requested = pyqtSignal()  # 설정 페이지로
 
     def __init__(self):
         super().__init__()
@@ -135,8 +136,17 @@ class InputInitialValues(QWidget):
         save_button.setMinimumHeight(56)
         save_button.setMinimumWidth(260)
         save_button.clicked.connect(self.save_data)
+        # 설정은 시험 시작 전에만 바꿀 수 있게 여기에 둔다 (측정 중에 목표
+        # 압력이나 팬 보정식이 바뀌면 같은 시험 안에서 기준이 갈린다)
+        settings_button = QPushButton("설정")
+        settings_button.setObjectName("Secondary")
+        settings_button.setMinimumHeight(56)
+        settings_button.setMinimumWidth(120)
+        settings_button.clicked.connect(self.settings_requested.emit)
         btn_row = QHBoxLayout()
+        btn_row.setSpacing(12)
         btn_row.addStretch(1)
+        btn_row.addWidget(settings_button)
         btn_row.addWidget(save_button)
         btn_row.addStretch(1)
         root.addLayout(btn_row)

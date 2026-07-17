@@ -17,8 +17,10 @@ from bdt.pages import (
     LiveMeasurementChart,
     TargetingPage,
     CalculationSummary,
+    SettingsPage,
 )
-from bdt.tasks import BackgroundTask, TARGET_PRESSURE
+from bdt import settings
+from bdt.tasks import BackgroundTask
 
 
 class MainWindow(QMainWindow):
@@ -116,6 +118,18 @@ class TestFlow(QObject):
         self.window.header.set_steps(["조건 입력"])
         page = InputInitialValues()
         page.saved.connect(self.on_conditions_saved)
+        page.settings_requested.connect(self.show_settings)
+        self.window.show_page(page, step=0)
+
+    def show_settings(self):
+        """설정 페이지 — 닫으면 조건 입력으로 돌아온다.
+
+        입력하던 조건은 남기지 않는다. 설정을 고칠 일은 시험 시작 전이고,
+        입력값을 보존하려면 저장 안 된 상태를 들고 다녀야 해 얻는 것보다
+        복잡해진다.
+        """
+        page = SettingsPage()
+        page.closed.connect(self.start)
         self.window.show_page(page, step=0)
 
     # ── 실패·중단 처리 ───────────────────────────────────────
@@ -128,6 +142,19 @@ class TestFlow(QObject):
         self.stopped = True
         self.window.measuring = False
         page = ErrorPage("시험을 계속할 수 없습니다", message)
+        page.restart.connect(self.start)
+        self.window.show_page(page)
+
+    def on_impossible(self, message):
+        """현장 조건이 시험을 허락하지 않는다 — 장비 오류와 구분해 알린다.
+
+        팬을 최소로 낮춰도 압력이 상한을 넘는 경우다. 작업자가 장비를
+        의심하며 시간을 쓰지 않도록, 원인(외풍·과도한 기밀)과 대처를
+        제목에서부터 분명히 한다.
+        """
+        self.stopped = True
+        self.window.measuring = False
+        page = ErrorPage("시험 불가 — 압력을 제어할 수 없습니다", message)
         page.restart.connect(self.start)
         self.window.show_page(page)
 
@@ -157,6 +184,10 @@ class TestFlow(QObject):
             task._halted = True
             self.on_cancelled()
 
+        def on_impossible(message):
+            task._halted = True
+            self.on_impossible(message)
+
         def proceed():
             if task._halted:
                 return
@@ -164,6 +195,7 @@ class TestFlow(QObject):
 
         task.error.connect(on_error)
         task.cancelled.connect(on_cancelled)
+        task.impossible.connect(on_impossible)
         task.finished.connect(proceed)
         # QThread 는 파이썬 참조가 사라져도 C++ 스레드가 정리 중일 수 있어,
         # 마지막 참조가 too early 로 끊기면 "Destroyed while thread is still
@@ -210,13 +242,16 @@ class TestFlow(QObject):
         측정 차트로 넘어간다.
         """
         label = self.TESTS[test]
+        cfg = settings.load()
         page = TargetingPage(f"{label} 시험 — 목표 압력 조절 중",
-                             target=TARGET_PRESSURE)
+                             target=cfg["target_pressure"],
+                             tolerance=settings.tolerance_pa(cfg))
         self.window.show_page(page, step=self.steps.index(label))
 
         task = BackgroundTask(test)
         task.progress.connect(page.set_progress)
         task.raw_position.connect(page.update_position)
+        task.hold.connect(page.update_hold)
         # 중단 버튼 → 측정 루프가 스스로 빠져나오고 팬을 세운다
         page.cancelled.connect(task.cancel)
         task.targeted.connect(lambda: self.show_measurement(test, task))

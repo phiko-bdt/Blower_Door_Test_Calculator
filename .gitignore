@@ -71,6 +71,8 @@ calculation_raw.json
 conditions.json
 depressurization_raw.json
 pressurization_raw.json
+# 현장에서 바꾼 측정 기준값. 없으면 bdt/settings.py 의 기본값으로 돈다.
+settings.json
 raspberrypi.txt
 report_*.xlsx
 report.pdf

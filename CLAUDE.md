@@ -9,6 +9,11 @@
 - `bdt/theme.py` — 앱 전체 색의 단일 소스. 화면(PyQt)·성적서 그래프(matplotlib)·
   성적서 HTML 이 전부 여기서 색을 가져간다. 성적서가 디자인 기준이다.
 - `bdt/hardware.py` — 팬 PWM(sysfs)·압력센서(Modbus RTU). **pigpio 금지** (아래).
+- `bdt/settings.py` — 측정 기준값(목표 압력·허용 오차·유지 시간·상한 등)의 단일
+  소스. settings.json 에 저장되고 설정 페이지가 편집한다. **읽는 쪽은 항상
+  `load()` 로 그때그때 읽는다** — 모듈 상수로 캐시하면 방금 바꾼 설정이 다음
+  시험에 안 먹는다. 팬 보정식만은 예전부터 `fan_coefficients.json` 에 있고
+  `calculation.py` 가 직접 읽으므로 파일을 옮기지 않는다 (기존 데이터·스크립트 호환).
 - `bdt/tasks.py` — QThread 작업. finished 는 성공/실패 무관하게 항상 오므로
   절대 finished 만으로 다음 단계로 넘어가지 말 것 (error/cancelled 로 판단).
 - `bdt/flow.py` — 단일창 + QStackedWidget 페이지 전환. show_page 가 이전 페이지를
@@ -45,7 +50,17 @@
   개체차에 따라 그 값에서 꺼질 수 있다. 측정점은 팬이 확실히 도는 자리여야 한다.
 - 용어는 KS L ISO 9972 원문 기준: 누기량·보정 누기 계수 C₀·기류 지수 n·
   누기 면적·누기 그래프·압력차 Δp.
-- 팬 커버 기능은 폐기 (UI 없음, 계산부는 "none" 폴백).
+- 팬 커버 기능은 폐기 (UI 없음, 계산부는 "none" 폴백). 설정 페이지도 "none"
+  커버만 편집하되, 저장 시 나머지 커버 항목은 손대지 않고 보존한다.
+- **수렴 판정은 목표의 비율이다** (기본 10% → 목표 70 Pa 에서 ±7 Pa). 예전엔
+  `target/10` 으로 코드에 박혀 있어 목표를 바꿔도 비율은 못 바꿨다.
+- **팬 최소에서도 압력이 목표를 넘는 경우**(과도한 기밀·외풍)의 처리:
+  - 압력이 시험 가능 상한(기본 100 Pa)을 넘으면 → `tasks.TestImpossible` →
+    전용 "시험 불가" 화면. 장비 오류(`error`)와 **다른 시그널**(`impossible`)로
+    구분한다 — 작업자가 장비를 의심하며 시간 쓰지 않게.
+  - 상한 이내면 → `_find_upper_duty` 로 상한을 넘지 않는 가장 높은 팬 세기를
+    실측 탐색해 거기서부터 최저 지점까지 훑는다. **최대 duty 로 올려 훑지 말 것**
+    — 압력이 이미 목표를 넘었는데 팬을 더 돌리는 정반대 처리다 (실제 있던 버그).
 - **리버서블 팬 지원은 의도적으로 남긴 죽은 코드다 — 지우지 말 것.**
   `control.duty_transformation` 의 `min>max` 역방향 분기와
   `fan_coefficients.json` 의 forward/reverse 계수 분리가 해당한다. 현재 팬
@@ -56,7 +71,9 @@
 ## 검증 방법
 
 - **회귀 스모크 (수정 후 항상)**: `QT_QPA_PLATFORM=offscreen python3 tests/smoke.py`
-  — 하드웨어 모킹 종단 10검사, 약 30초, 전부 통과 시 종료코드 0.
+  — 하드웨어 모킹 종단 15검사, 약 1분, 전부 통과 시 종료코드 0.
+  실데이터(conditions.json·raw·settings.json)는 백업 후 복원하며, 스모크가
+  새로 만든 파일은 지운다 (스모크용 값이 실제 설정으로 굳지 않게).
 - 문법·임포트: `python3 -m py_compile bdt/**/*.py` + `python3 -c "import bdt.flow"`
 - GUI 캡처(하드웨어 미접촉): `QT_QPA_PLATFORM=offscreen` + hardware.pressure_read/
   duty_set 모킹 + `widget.grab().save(...)`. QChart 애니메이션은 실제 이벤트 루프
