@@ -76,6 +76,8 @@ settings.json
 raspberrypi.txt
 report_*.xlsx
 report.pdf
+# 성적서를 앱 안에 띄우려고 렌더한 화면 캐시 (시험마다 덮어쓴다)
+report_page.png
 graph.png
 test.py
 test_set/
