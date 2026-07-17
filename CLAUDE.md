@@ -3,6 +3,11 @@
 라즈베리파이5 + PyQt6 + 1280×800 터치스크린으로 건물 기밀성능 시험(KS L ISO 9972 준용)을
 수행하고 성적서 PDF 를 발행하는 현장 계측 앱. 실행: `python3 -m bdt` (바탕화면 아이콘).
 
+부팅하면 `~/.config/labwc/autostart` 가 앱을 자동으로 띄우고 **전체화면**으로 연다
+(원본 사본은 저장소의 `labwc-autostart`, 로그는 `~/bdt-autostart.log`).
+창 데코레이션이 없으므로 종료는 헤더 오른쪽 '종료' 버튼이 유일한 수단이다.
+원격에서 볼 때는 `BDT_WINDOWED=1 python3 -m bdt` 로 창 모드.
+
 ## 아키텍처
 
 - `bdt/paths.py` — 모든 파일 접근의 단일 소스 (절대경로). CWD 를 신뢰하지 말 것.
@@ -87,6 +92,16 @@
 
 ## 함정 (실제로 겪은 것)
 
+- **페이지의 최소 높이가 화면을 넘으면 전체화면이 조용히 풀린다.** 창이 화면보다
+  커야 하는 상황이 되면 Qt/WM 이 fullscreen 을 포기한다 — 예외도 경고도 없이
+  창틀과 작업표시줄이 그대로 남는다. 조건 입력 페이지가 최소 793 + 헤더 77 =
+  870 > 800 이라 `stack.addWidget` 순간 풀렸다. 세로가 긴 페이지는 본문을
+  QScrollArea 에 담아 최소 높이를 없앤다 (스모크가 페이지별 세로 예산을 검사).
+- PyQt6 (apt 판)에는 **wayland 플랫폼 플러그인이 없다** — XWayland(xcb)로 뜬다.
+  "Could not find the Qt platform plugin wayland" 로그는 정상이며, 전체화면·
+  터치·차트 모두 xcb 에서 동작한다.
+- `pkill -f "python3 -m bdt"` 는 **그 명령을 실행한 셸 자신도 죽인다** (명령줄에
+  패턴이 들어 있다). PID 를 얻어 kill 하거나 패턴을 `bdt\.__main__` 로 좁힐 것.
 - QLineSeries 는 NaN 을 무시한다 — 선 끊기 트릭 불가, 시리즈를 나눠라.
 - QLogValueAxis 는 10^n 에만 라벨 — 한 십진 구간(20~70 Pa) 데이터면 라벨이
   전혀 없다. 실시간 화면은 선형축 사용.

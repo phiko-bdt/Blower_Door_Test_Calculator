@@ -37,6 +37,7 @@ class MainWindow(QMainWindow):
         self.measuring = False
 
         self.header = StepHeader()
+        self.header.quit_button.clicked.connect(self._confirm_quit)
         self.stack = QStackedWidget()
 
         center = QWidget()
@@ -46,6 +47,21 @@ class MainWindow(QMainWindow):
         outer.addWidget(self.header)
         outer.addWidget(self.stack, 1)
         self.setCentralWidget(center)
+
+    def _confirm_quit(self):
+        """헤더의 종료 버튼 — 한 번 되묻고 닫는다.
+
+        closeEvent 는 작업 중일 때만 확인을 받는다 (창의 X 를 누르는 건
+        분명한 의사표시였다). 전체화면에서는 이 버튼이 유일한 종료 수단이라
+        화면 구석에 늘 떠 있으므로, 지나가다 스친 터치로 앱이 꺼지지 않게
+        여기서 한 번 더 묻는다.
+        """
+        answer = QMessageBox.question(
+            self, "앱 종료", "기밀성능 시험 앱을 종료할까요?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer == QMessageBox.StandardButton.Yes:
+            self.close()  # 진행 중 작업 정리는 closeEvent 가 맡는다
 
     def closeEvent(self, event):
         """작업 중에는 확인 없이 닫히지 않게 하고, 닫을 때는 작업을 정리한다.

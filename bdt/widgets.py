@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QVBoxLayout,
+    QPushButton,
 )
 from PyQt6.QtCore import Qt
 
@@ -35,8 +36,23 @@ class StepHeader(QWidget):
         self.steps = []       # [(라벨, 밑줄, 이름), ...]
 
         self.row = QHBoxLayout()
-        self.row.setContentsMargins(40, 14, 40, 0)
+        self.row.setContentsMargins(40, 14, 0, 0)
         self.row.setSpacing(0)
+
+        # 앱이 전체화면이라 창의 X 버튼이 없다 — 종료 수단은 앱 안에 있어야
+        # 한다. set_steps 가 self.row 를 통째로 비우므로 단계 목록과 같은
+        # 레이아웃에 두면 첫 단계 전환에서 사라진다.
+        self.quit_button = QPushButton("종료")
+        self.quit_button.setObjectName("HeaderQuit")
+        self.quit_button.setFixedHeight(30)
+        self.quit_button.setMinimumWidth(72)
+
+        top = QHBoxLayout()
+        top.setContentsMargins(0, 10, 40, 0)
+        top.setSpacing(0)
+        top.addLayout(self.row)
+        top.addStretch(1)
+        top.addWidget(self.quit_button, 0, Qt.AlignmentFlag.AlignTop)
 
         # 헤더와 본문을 가르는 실선 한 줄 (성적서의 구분선과 같은 역할)
         rule = QFrame()
@@ -45,7 +61,7 @@ class StepHeader(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(10)
-        outer.addLayout(self.row)
+        outer.addLayout(top)
         outer.addWidget(rule)
 
     def _clear(self):

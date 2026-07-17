@@ -320,6 +320,31 @@ def main():
         check("점 1개 후 데이터 맞춤 전환",
               pg.axis_x.max() - pg.axis_x.min() < span)
 
+        # ── 4-2. 페이지가 화면(800)보다 높으면 전체화면이 안 된다 ──
+        # (사고: 조건 입력 페이지의 최소 높이 793 + 헤더 77 = 870 > 800 이라
+        #  창이 화면보다 커야 했고, 페이지를 붙이는 순간 showFullScreen 이
+        #  조용히 풀려 부팅 화면에 창틀과 작업표시줄이 그대로 남았다)
+        print("4-2. 전체화면 예산")
+        from bdt.pages import (InputInitialValues, LivePressureData,
+                               ProgressPage, ErrorPage, TargetingPage,
+                               SettingsPage as _SP)
+        probe = MainWindow()
+        budget = 800 - probe.header.minimumSizeHint().height()
+        pages = {
+            "InputInitialValues": InputInitialValues(),
+            "SettingsPage": _SP(),
+            "LivePressureData": LivePressureData("측정 시작"),
+            "ProgressPage": ProgressPage("계산 중"),
+            "ErrorPage": ErrorPage("오류", "메시지"),
+            "LiveMeasurementChart": LiveMeasurementChart("측정", num_fans=1),
+            "TargetingPage": TargetingPage(),
+        }
+        tall = {n: p.minimumSizeHint().height() for n, p in pages.items()
+                if p.minimumSizeHint().height() > budget}
+        check(f"모든 페이지가 세로 예산({budget}) 안", not tall,
+              ", ".join(f"{n}={h}" for n, h in tall.items()) or
+              f"최대 {max(p.minimumSizeHint().height() for p in pages.values())}")
+
         # ── 5. 종료 시 워커 정리 ────────────────────────────────
         print("5. 창 닫기 정리")
         control.get_duty = slow_get_duty

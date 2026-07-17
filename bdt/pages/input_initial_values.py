@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QComboBox,
     QFrame,
+    QScrollArea,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
@@ -32,32 +33,44 @@ class InputInitialValues(QWidget):
     def __init__(self):
         super().__init__()
 
-        # 루트 레이아웃 (세로): 헤더 → 폼 → 옵션 → 체크박스 → 저장 버튼
+        # 루트 레이아웃 (세로): 제목 → 스크롤 본문(폼) → 저장 버튼
+        #
+        # 본문을 스크롤 영역에 담는 이유는 항목이 많아서가 아니라 **최소 높이를
+        # 없애기 위해서**다. 이 페이지가 요구하는 최소 높이(793)가 화면(800)에서
+        # 헤더를 뺀 예산(723)을 넘으면 창이 화면보다 커야 하고, 그러면 앱이
+        # 전체화면으로 뜨지 못한다 (실제로 그랬다 — 페이지를 붙이는 순간
+        # showFullScreen 이 풀렸다). 스크롤 영역은 축소를 허용해 이 제약을
+        # 없앤다. 1280×800 에서는 스크롤이 생기지 않는다.
         root = QVBoxLayout()
-        root.setContentsMargins(40, 24, 40, 24)
-        root.setSpacing(16)
+        root.setContentsMargins(40, 20, 40, 20)
+        root.setSpacing(14)
         self.setLayout(root)
 
         # 상단 제목 — 성적서 헤더와 같은 처리 (제목 + 영문 부제 + 규격 + accent 룰)
         root.addWidget(PageHeader("기밀성능 시험", "Building Airtightness Test"))
 
+        body = QWidget()
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(0, 0, 12, 0)
+        body_layout.setSpacing(14)
+
         # 안내 문구
         hint = QLabel("＊ 표시된 항목은 필수입니다. 나머지는 성적서에 실릴 정보로, 비워 둘 수 있습니다.")
         hint.setObjectName("Hint")
-        root.addWidget(hint)
+        body_layout.addWidget(hint)
 
         self.input_fields = {}
 
         # ── 필수 항목 — 시험 수행에 반드시 필요한 값만 따로 묶고
         #    테두리를 accent 색으로 둘러 눈에 띄게 한다 (색만으로 구분하지
         #    않도록 라벨에도 ＊ 표시를 함께 단다)
-        root.addWidget(SectionTitle("필수 항목"))
+        body_layout.addWidget(SectionTitle("필수 항목"))
         required_card = QFrame()
         required_card.setObjectName("Card")
         req = QGridLayout(required_card)
-        req.setContentsMargins(28, 24, 28, 24)
+        req.setContentsMargins(28, 16, 28, 16)
         req.setHorizontalSpacing(24)
-        req.setVerticalSpacing(16)
+        req.setVerticalSpacing(12)
         req.setColumnStretch(1, 1)
         req.setColumnStretch(3, 1)
 
@@ -92,10 +105,10 @@ class InputInitialValues(QWidget):
         check_row.addStretch(1)
         req.addWidget(self._required_label("수행할 시험"), 1, 0)
         req.addLayout(check_row, 1, 1, 1, 3)
-        root.addWidget(required_card)
+        body_layout.addWidget(required_card)
 
         # ── 시험 정보 (선택) — 성적서에 실리는 문자 정보 ─────────
-        root.addWidget(SectionTitle("시험 정보 (선택)"))
+        body_layout.addWidget(SectionTitle("시험 정보 (선택)"))
         labels = [
             ("시험 목적", "purpose", "신축 공동주택 기밀성능 확인"),
             ("시험 위치", "location", "서울시 송파구 풍납동 497"),
@@ -112,9 +125,9 @@ class InputInitialValues(QWidget):
         card = QFrame()
         card.setObjectName("Card")
         form = QGridLayout(card)
-        form.setContentsMargins(28, 24, 28, 24)
+        form.setContentsMargins(28, 16, 28, 16)
         form.setHorizontalSpacing(24)
-        form.setVerticalSpacing(16)
+        form.setVerticalSpacing(12)
         form.setColumnStretch(1, 1)
         form.setColumnStretch(3, 1)
 
@@ -127,9 +140,15 @@ class InputInitialValues(QWidget):
             form.addWidget(label, r, c * 2)
             form.addWidget(input_field, r, c * 2 + 1)
             self.input_fields[label_key] = input_field
-        root.addWidget(card)
+        body_layout.addWidget(card)
 
-        root.addStretch(1)
+        body_layout.addStretch(1)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidget(body)
+        root.addWidget(scroll, 1)
 
         # 저장 버튼 (하단, 크게 — 터치용)
         save_button = QPushButton("저장하고 시작")

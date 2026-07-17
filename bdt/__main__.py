@@ -91,10 +91,20 @@ def main():
     else:
         print("Failed to load font.")
 
-    # 시험 전 과정을 담는 창 하나 (1280×800 터치스크린 기준)
+    # 시험 전 과정을 담는 창 하나 (1280×800 터치스크린 기준).
+    #
+    # 부팅하면 이 앱이 바로 뜨는 현장 단말이라 전체화면으로 연다 — 작업자가
+    # 창을 찾거나 데스크톱을 만질 일이 없어야 한다. 창 데코레이션이 없으므로
+    # 종료는 헤더 오른쪽 '종료' 버튼이 맡는다 (StepHeader 참고).
+    #
+    # BDT_WINDOWED=1 이면 창 모드로 뜬다. 원격에서 화면을 확인할 때 전체화면은
+    # 다른 창을 전부 가려 작업이 어렵다.
     window = MainWindow()
     window.resize(WIN_W, WIN_H)
-    window.show()
+    if os.environ.get("BDT_WINDOWED") == "1":
+        window.show()
+    else:
+        window.showFullScreen()
 
     # 시작 시 팬 정지에 실패했다면 시험 전에 반드시 알린다
     if fan_stop_failed:

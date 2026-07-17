@@ -282,6 +282,21 @@ QPushButton#Secondary {{
     border: 1px solid {COLOR_LINE};
 }}
 QPushButton#Secondary:hover {{ background-color: {COLOR_ACCENT_SOFT}; }}
+/* 헤더 구석의 종료 버튼 — 전체화면이라 창의 X 가 없어 앱 안에 둔다.
+   시험 진행과 무관한 기능이므로 단계 표시보다 물러서 보이게 한다. */
+QPushButton#HeaderQuit {{
+    color: {COLOR_SUB};
+    background-color: transparent;
+    border: 1px solid {COLOR_LINE};
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 13px;
+    font-weight: 400;
+}}
+QPushButton#HeaderQuit:hover {{
+    color: {COLOR_DANGER};
+    border-color: {COLOR_DANGER};
+}}
 QCheckBox {{
     font-size: 15px;
     spacing: 10px;
