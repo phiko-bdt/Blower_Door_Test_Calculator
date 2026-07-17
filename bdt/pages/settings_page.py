@@ -139,20 +139,16 @@ class SettingsPage(QWidget):
         card = QFrame()
         card.setObjectName("Card")
         outer = QVBoxLayout(card)
-        outer.setContentsMargins(28, 24, 28, 24)
-        outer.setSpacing(12)
+        outer.setContentsMargins(28, 16, 28, 16)
+        outer.setSpacing(10)
 
-        note = QLabel(
-            "누기량(㎥/h) = (기울기 × 팬 세기(%) + 절편) × 팬 수량. "
-            "팬 보정 시험에서 얻은 1차식 계수를 그대로 넣습니다. "
-            "아래 ‘팬 세기 사용 구간’ 밖에서는 이 식이 맞지 않습니다.")
+        note = QLabel("누기량(㎥/h) = (기울기 × 팬 세기(%) + 절편) × 팬 수량")
         note.setObjectName("Hint")
-        note.setWordWrap(True)
         outer.addWidget(note)
 
         grid = QGridLayout()
         grid.setHorizontalSpacing(20)
-        grid.setVerticalSpacing(14)
+        grid.setVerticalSpacing(10)
         grid.setColumnStretch(5, 1)
         grid.addWidget(self._column_title("기울기 (㎥/h·%)"), 0, 1)
         grid.addWidget(self._column_title("절편 (㎥/h)"), 0, 3)
@@ -181,11 +177,12 @@ class SettingsPage(QWidget):
             duty_row.addWidget(edit)
             if key == "duty_min":
                 duty_row.addWidget(QLabel("~"))
-        duty_hint = QLabel(
-            "PID 가 이 구간 안에서만 팬을 돌립니다. 최소는 팬이 확실히 도는 "
-            "값으로 잡으세요 (너무 낮으면 팬이 멈춥니다).")
+        # 최소를 너무 낮게 잡으면 팬이 멈춘다는 게 이 값의 유일한 함정이라
+        # 툴팁으로 남기고, 화면에는 한 줄만 둔다
+        duty_hint = QLabel("PID 가 팬을 돌리는 범위 · 보정식이 유효한 범위")
         duty_hint.setObjectName("Hint")
-        duty_hint.setWordWrap(True)
+        duty_hint.setToolTip("최소는 팬이 확실히 도는 값으로 잡으세요 "
+                             "(너무 낮으면 팬이 멈춥니다).")
         duty_row.addWidget(duty_hint, 1)
         outer.addLayout(duty_row)
         return card
