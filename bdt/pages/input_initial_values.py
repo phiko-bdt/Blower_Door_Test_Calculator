@@ -40,7 +40,7 @@ class InputInitialValues(QWidget):
         root.addWidget(PageHeader("기밀성능 시험", "Building Airtightness Test"))
 
         # 안내 문구
-        hint = QLabel("‘실내 체적’은 필수 입력이며, 감압 / 가압 중 하나 이상을 선택해야 합니다.")
+        hint = QLabel("‘실내 체적’은 필수 입력이며, 감압·가압 시험 중 하나 이상을 선택해야 합니다.")
         hint.setObjectName("Hint")
         root.addWidget(hint)
 
@@ -49,14 +49,14 @@ class InputInitialValues(QWidget):
         # 입력 필드와 레이블 생성
         # (표시되는 레이블, 저장되는 key, placeholder)
         labels = [
-            ("시험 목적", "purpose", "기밀 시험"),
-            ("위치", "location", "서울시 송파구 풍납동 497"),
-            ("테스트 방식", "method", "method A / method B"),
+            ("시험 목적", "purpose", "신축 공동주택 기밀성능 확인"),
+            ("시험 위치", "location", "서울시 송파구 풍납동 497"),
+            ("시험 방법", "method", "method A / method B"),
             ("의뢰자", "requester", "홍길동, 010-0000-0000"),
-            ("설계사", "designer", "OO건축사사무소"),
+            ("설계자", "designer", "OO건축사사무소"),
             ("시험자", "tester", "김철수 (주)기밀시험"),
-            ("시공사(시공자)", "builder", "OO건축"),
-            ("실내 체적 (㎥)", "interior volume", "(필수) 424.21 와 같이 숫자만 작성 가능합니다."),
+            ("시공자", "builder", "OO건축"),
+            ("실내 체적 (㎥)", "interior volume", "예: 424.21 — 숫자만 입력"),
             ("연면적 (㎡)", "floor area", "92.4"),
             ("구조", "structure", "경량목구조")
         ]
@@ -105,10 +105,10 @@ class InputInitialValues(QWidget):
         self.checkbox_states = {}
         check_row = QHBoxLayout()
         check_row.setSpacing(32)
-        checkbox1 = QCheckBox("감압 실험")
+        checkbox1 = QCheckBox("감압 시험")
         checkbox1.setObjectName("depressurization")
         checkbox1.stateChanged.connect(self.save_checkbox_state)
-        checkbox2 = QCheckBox("가압 실험")
+        checkbox2 = QCheckBox("가압 시험")
         checkbox2.setObjectName("pressurization")
         checkbox2.stateChanged.connect(self.save_checkbox_state)
         check_row.addWidget(checkbox1)
@@ -148,7 +148,7 @@ class InputInitialValues(QWidget):
         if not text:
             if required:
                 QMessageBox.warning(self, "입력 오류",
-                                    f"'{label}'는 필수 입력 사항입니다.")
+                                    f"‘{label}’ 항목은 필수 입력입니다.")
                 field.setFocus()
                 return None
             return ""
@@ -159,14 +159,14 @@ class InputInitialValues(QWidget):
         except ValueError:
             QMessageBox.warning(
                 self, "입력 오류",
-                f"'{label}'에는 숫자만 넣을 수 있습니다.\n"
+                f"‘{label}’ 항목에는 숫자만 넣을 수 있습니다.\n"
                 f"입력한 값: {text}\n\n단위나 글자를 빼고 숫자만 적어 주세요.")
             field.setFocus()
             field.selectAll()
             return None
         if value <= 0:
             QMessageBox.warning(self, "입력 오류",
-                                f"'{label}'는 0보다 커야 합니다.")
+                                f"‘{label}’ 항목은 0보다 커야 합니다.")
             field.setFocus()
             field.selectAll()
             return None
@@ -188,7 +188,7 @@ class InputInitialValues(QWidget):
         # 감압 또는 가압 중 적어도 하나가 선택되었는지 확인
         is_checked = self.checkbox_states.get("depressurization", False) or self.checkbox_states.get("pressurization", False)
         if not is_checked:
-            QMessageBox.warning(self, "선택 오류", "'감압 실험' 또는 '가압 실험' 중 하나는 선택해야 합니다.")
+            QMessageBox.warning(self, "선택 오류", "감압 시험과 가압 시험 중 하나 이상을 선택해야 합니다.")
             return
 
         data = {}

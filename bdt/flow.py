@@ -147,7 +147,7 @@ class TestFlow(QObject):
 
     def measure(self, test):
         label = self.TESTS[test]
-        page = LiveMeasurementChart(f"{label} 시험 측정 중...", num_fans=self.fan_count)
+        page = LiveMeasurementChart(f"{label} 시험 측정 중…", num_fans=self.fan_count)
         self.window.show_page(page, step=self.steps.index(label))
 
         task = BackgroundTask(test)
@@ -182,7 +182,7 @@ class TestFlow(QObject):
         self.window.show_page(self.summary, step=self.steps.index("계산"))
         self.summary.start()
         # 결과를 읽는 동안 뒤에서 그래프를 만든다
-        self.run_background("graph_plotting", "그래프를 그리는 중…", self.run_report)
+        self.run_background("graph_plotting", "누기 그래프를 그리는 중…", self.run_report)
 
     def run_report(self):
         # 같은 결과 화면을 유지한 채 단계 표시만 '성적서' 로 옮긴다

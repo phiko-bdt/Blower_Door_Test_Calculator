@@ -25,7 +25,7 @@ class ProgressPage(QWidget):
     끝난 상태(done=True)면 막대를 감춘다.
     """
 
-    def __init__(self, title="작업 중...", done=False):
+    def __init__(self, title="작업 중…", done=False):
         super().__init__()
 
         self.label = QLabel(title)

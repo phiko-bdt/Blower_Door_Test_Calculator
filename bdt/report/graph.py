@@ -40,11 +40,11 @@ def _draw_series(ax, label, res, color, marker, limits, fonts, show_ylabel=True)
     ax.set_facecolor(C_SURFACE)
     xs, ys = zip(*res["measured values"])
 
-    # 회귀선 Q = C0·ΔP^n (측정 압력 범위 안에서 실선)
+    # 회귀선 Q = C0·Δp^n (측정 압력 범위 안에서 실선)
     x_fit = np.logspace(math.log10(min(xs)), math.log10(max(xs)), 80)
     ax.plot(x_fit, res["C0"] * np.power(x_fit, res["n"]),
             color=color, linewidth=1.8, zorder=5, solid_capstyle="round",
-            label=f"$Q={res['C0']:.1f}\\,\\Delta P^{{{res['n']:.2f}}}$")
+            label=f"$Q={res['C0']:.1f}\\,\\Delta p^{{{res['n']:.2f}}}$")
 
     # 50 Pa 가 측정 범위를 벗어나면 그 구간은 점선으로 연장
     q50 = res["C0"] * math.pow(50, res["n"])
@@ -91,9 +91,9 @@ def _draw_series(ax, label, res, color, marker, limits, fonts, show_ylabel=True)
         ax.spines[side].set_color(C_GRID)
 
     # 라벨 (y축 라벨은 왼쪽 그래프에만)
-    ax.set_xlabel("압력차 ΔP  (Pa)", fontproperties=f_axis, color=C_INK, labelpad=7)
+    ax.set_xlabel("압력차 Δp  (Pa)", fontproperties=f_axis, color=C_INK, labelpad=7)
     if show_ylabel:
-        ax.set_ylabel("침기(누기)량  (㎥/h)", fontproperties=f_axis, color=C_INK, labelpad=7)
+        ax.set_ylabel("누기량  (㎥/h)", fontproperties=f_axis, color=C_INK, labelpad=7)
 
     # 시험 종류 표시 (그래프 색과 같은 톤)
     ax.set_title(label, fontproperties=f_head, color=color, pad=7, loc="left")

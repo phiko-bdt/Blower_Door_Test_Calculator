@@ -57,7 +57,7 @@ def build_html(conditions, report, graph_path=None, font_path=None):
     # 대표값 기준: 감·가압 모두 했으면 평균, 하나만 했으면 그 값
     use_avg = has_dep and has_pre and "ACH50_avg" in report
     if use_avg:
-        basis = "감·가압 평균"
+        basis = "감압·가압 평균"
     elif has_dep:
         basis = "감압 기준"
     else:
@@ -82,8 +82,8 @@ def build_html(conditions, report, graph_path=None, font_path=None):
     # 대표 지표 3종 (어떤 값을 쓴 것인지 basis 로 밝힌다)
     kpis = [
         ("ACH50", _num(pick("ACH50")), "1/h", f"시간당 공기교환횟수 · {basis}"),
-        ("Q50", _num(pick("Q50"), 1), "㎥/h", f"50 Pa 기준 침기(누기)량 · {basis}"),
-        ("AL50", _num(pick("AL50"), 4), "㎡", f"유효 누기면적 · {basis}"),
+        ("Q50", _num(pick("Q50"), 1), "㎥/h", f"50 Pa 기준 누기량 · {basis}"),
+        ("AL50", _num(pick("AL50"), 4), "㎡", f"누기 면적 · {basis}"),
     ]
 
     # 상세표 행: (라벨, 감압, 가압, 단위)
@@ -95,10 +95,10 @@ def build_html(conditions, report, graph_path=None, font_path=None):
         )
 
     detail_rows = [
-        ("Q50", "침기(누기)량", *row("Q50", 1, "㎥/h")),
+        ("Q50", "누기량 (50 Pa)", *row("Q50", 1, "㎥/h")),
         ("ACH50", "공기교환횟수", *row("ACH50", 2, "1/h")),
-        ("AL50", "유효 누기면적", *row("AL50", 4, "㎡")),
-        ("C0", "누기 계수 C", *row("C0", 2, "㎥/(h·Paⁿ)")),
+        ("AL50", "누기 면적 (50 Pa)", *row("AL50", 4, "㎡")),
+        ("C0", "보정 누기 계수 C₀", *row("C0", 2, "㎥/(h·Paⁿ)")),
         ("n", "기류 지수 n", *row("n", 3, "")),
         ("r2", "결정 계수 R²", _num(report.get("r^2-"), 4),
          _num(report.get("r^2+"), 4), ""),
@@ -108,7 +108,7 @@ def build_html(conditions, report, graph_path=None, font_path=None):
     info_fields = [
         ("시험 목적", "purpose", None),
         ("시험 위치", "location", None),
-        ("시험 방식", "method", None),
+        ("시험 방법", "method", None),
         ("의뢰자", "requester", None),
         ("설계자", "designer", None),
         ("시험자", "tester", None),
@@ -130,7 +130,7 @@ def build_html(conditions, report, graph_path=None, font_path=None):
     graph_img = ""
     if graph_path and os.path.exists(graph_path):
         graph_uri = _data_uri(graph_path, "image/png")
-        graph_img = f'<img class="graph" src="{graph_uri}" alt="압력-유량 그래프">'
+        graph_img = f'<img class="graph" src="{graph_uri}" alt="누기 그래프">'
 
     # 표 행 HTML
     info_html = "".join(
@@ -259,7 +259,7 @@ tbody td.dep,tbody td.pre{{color:var(--ink);}}
     <tbody>{detail_html}</tbody>
   </table>
 
-  <div class="section-title">압력 – 유량 곡선</div>
+  <div class="section-title">누기 그래프</div>
   <div class="graph-wrap">{graph_img}</div>
 
   <div class="footer">

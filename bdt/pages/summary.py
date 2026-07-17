@@ -104,9 +104,9 @@ class CalculationSummary(QWidget):
         left_layout.setContentsMargins(24, 18, 24, 18)
         left_layout.setSpacing(2)
 
-        model = QLabel("Q = C₀ · ΔPⁿ")
+        model = QLabel("Q = C₀ · Δpⁿ")
         model.setObjectName("Formula")
-        model_note = QLabel("측정점에 최소제곱 회귀를 적용해 C₀ 와 n 을 구합니다.")
+        model_note = QLabel("측정점에 최소 자승법 회귀를 적용해 누기 계수와 기류 지수 n 을 구합니다.")
         model_note.setObjectName("Hint")
         model_note.setWordWrap(True)
         left_layout.addWidget(model)
@@ -121,9 +121,9 @@ class CalculationSummary(QWidget):
                 continue
             left_layout.addWidget(SectionTitle(name))
             for label, key, digits, unit in (
-                ("누기 계수 C₀", f"C0{suffix}", 2, "㎥/h·Paⁿ"),
-                ("공기 흐름 지수 n", f"n{suffix}", 4, ""),
-                ("결정 계수 r²", f"r^2{suffix}", 4, ""),
+                ("보정 누기 계수 C₀", f"C0{suffix}", 2, "㎥/(h·Paⁿ)"),
+                ("기류 지수 n", f"n{suffix}", 4, ""),
+                ("결정 계수 R²", f"r^2{suffix}", 4, ""),
             ):
                 row = ResultRow(label, _fmt(report.get(key), digits), unit)
                 left_layout.addWidget(row)
@@ -139,7 +139,7 @@ class CalculationSummary(QWidget):
         right_layout.setSpacing(2)
 
         conv = SectionTitle("50 Pa 기준 환산")
-        conv_note = QLabel("회귀식에 ΔP = 50 Pa 를 넣어 기준 압력에서의 값을 구합니다.")
+        conv_note = QLabel("회귀식에 Δp = 50 Pa 를 넣어 기준 압력에서의 값을 구합니다.")
         conv_note.setObjectName("Hint")
         conv_note.setWordWrap(True)
         right_layout.addWidget(conv)
@@ -172,7 +172,7 @@ class CalculationSummary(QWidget):
                         _fmt(report.get(final_key), 2), "1/h", emphasis=True)
         note = QLabel(final_note)
         note.setObjectName("Hint")
-        al = ResultRow("AL50  유효 누기면적", _fmt(report.get(al_key), 4), "㎡")
+        al = ResultRow("AL50  누기 면적", _fmt(report.get(al_key), 4), "㎡")
         right_layout.addWidget(ach)
         right_layout.addWidget(note)
         right_layout.addWidget(al)
@@ -185,7 +185,7 @@ class CalculationSummary(QWidget):
         columns.addWidget(right, 1)
 
         # ── 하단: 뒤 작업(그래프·성적서) 진행 상황 ─────────────
-        self.status = QLabel("그래프를 그리는 중…")
+        self.status = QLabel("누기 그래프를 그리는 중…")
         self.status.setObjectName("Hint")
         self.bar = QProgressBar()
         self.bar.setRange(0, 0)  # 미확정 — 남은 시간을 알 수 없다

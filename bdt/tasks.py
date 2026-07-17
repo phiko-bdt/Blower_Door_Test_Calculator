@@ -439,7 +439,7 @@ class BackgroundTask(QThread):
         with open(paths.CALCULATION_RAW_JSON, 'r') as file:
             calculation_raw = json.load(file)
 
-        self.report("압력-유량 그래프를 그리는 중…")
+        self.report("누기 그래프를 그리는 중…")
 
         if conditions.get("depressurization") and conditions.get("pressurization"):
             graph.plot_graph(calculation_raw['depressurization'],

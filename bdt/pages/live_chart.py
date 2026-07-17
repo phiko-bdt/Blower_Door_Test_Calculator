@@ -1,4 +1,4 @@
-"""측정 진행 상황 + 압력-침기(누기)량 산점도 페이지."""
+"""측정 진행 상황 + 누기 그래프(압력차-누기량 산점도) 페이지."""
 
 from PyQt6.QtWidgets import (
     QWidget,
@@ -25,9 +25,9 @@ from bdt.scale import padded_range
 
 
 class LiveMeasurementChart(QWidget):
-    """측정 진행 상황 + 압력-침기(누기)량 산점도를 실시간으로 보여주는 페이지.
+    """측정 진행 상황 + 누기 그래프를 실시간으로 보여주는 페이지.
 
-    x축은 압력차(Pa), y축은 침기(누기)량(㎥/h)이다.
+    x축은 압력차(Pa), y축은 누기량(㎥/h)이다.
     감압/가압을 서로 다른 마커로 그리며, 창이 새로 열려도 앞 시험의 점을
     계속 보여주기 위해 측정값을 클래스 변수에 누적한다.
     """
@@ -66,7 +66,7 @@ class LiveMeasurementChart(QWidget):
 
     # 측정점이 아직 없을 때 쓰는 씨앗 범위.
     # 점이 들어오는 대로 rescale() 이 데이터에 맞춰 다시 잡는다.
-    # 침기(누기)량은 팬 개수에 비례하므로 팬 1개 기준 값에 팬 개수를 곱한다.
+    # 누기량은 팬 개수에 비례하므로 팬 1개 기준 값에 팬 개수를 곱한다.
     FLOW_MIN_PER_FAN, FLOW_MAX_PER_FAN = 800.0, 1600.0
     # KS L ISO 9972 의 시험 압력 구간
     PRESSURE_MIN, PRESSURE_MAX = 10.0, 100.0  # 압력차 (Pa)
@@ -77,11 +77,11 @@ class LiveMeasurementChart(QWidget):
         for points in cls.accumulated.values():
             points.clear()
 
-    def __init__(self, initial_message="측정 중...", num_fans=1):
+    def __init__(self, initial_message="측정 중…", num_fans=1):
         super(LiveMeasurementChart, self).__init__()
 
         # 측정점이 없을 때 쓸 씨앗 범위. 점이 들어오면 rescale() 이 데이터에 맞춰
-        # 다시 잡는다. 침기(누기)량은 팬 개수에 비례한다.
+        # 다시 잡는다. 누기량은 팬 개수에 비례한다.
         self.flow_min = self.FLOW_MIN_PER_FAN * num_fans
         self.flow_max = self.FLOW_MAX_PER_FAN * num_fans
         self.x_lo, self.x_hi = self.PRESSURE_MIN, self.PRESSURE_MAX
@@ -121,7 +121,7 @@ class LiveMeasurementChart(QWidget):
         self.chart.setBackgroundPen(QPen(Qt.PenStyle.NoPen))
         self.chart.setBackgroundRoundness(6)
         self.chart.setPlotAreaBackgroundVisible(False)
-        self.chart.setTitle("압력 – 침기(누기)량")
+        self.chart.setTitle("누기 그래프")
         title_font = QFont()
         title_font.setPointSize(11)
         title_font.setBold(True)
@@ -147,12 +147,12 @@ class LiveMeasurementChart(QWidget):
         # 화면은 쓸모가 없다. 이 화면의 일은 "지금 어느 지점을 찍고 있는가"를
         # 보여주는 것이고, 회귀선 판독은 성적서가 맡는다.
         self.axis_x = QValueAxis()
-        self.axis_x.setTitleText("압력차 ΔP (Pa)")
+        self.axis_x.setTitleText("압력차 Δp (Pa)")
         self.axis_x.setLabelFormat("%.0f")
         self.axis_x.setTickCount(6)
         self.axis_x.setRange(self.PRESSURE_MIN, self.PRESSURE_MAX)
         self.axis_y = QValueAxis()
-        self.axis_y.setTitleText("침기(누기)량 (㎥/h)")
+        self.axis_y.setTitleText("누기량 (㎥/h)")
         self.axis_y.setLabelFormat("%.0f")
         self.axis_y.setTickCount(6)
         self.axis_y.setRange(self.flow_min, self.flow_max)
