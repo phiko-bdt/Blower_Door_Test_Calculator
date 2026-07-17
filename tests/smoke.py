@@ -82,11 +82,22 @@ def install_mocks():
     return state
 
 
+def _snapshot(dirs):
+    """디렉토리별 현재 파일 목록. 스모크가 새로 만든 것만 골라내는 데 쓴다."""
+    return {d: set(os.listdir(d)) if os.path.isdir(d) else set() for d in dirs}
+
+
 def main():
     backup = tempfile.mkdtemp(prefix="bdt_smoke_")
     for f in DATA_FILES:
         if os.path.exists(f):
             shutil.copy(f, os.path.join(backup, f))
+    # 시험을 돌리면 백업 폴더에도 산출물이 쌓인다 — 스모크의 가짜 측정값이
+    # 실측 기록과 섞이면 나중에 어느 게 진짜인지 알 수 없다.
+    ARTIFACT_DIRS = (paths.MEASUREMENTS_DIR, paths.CONDITIONS_DIR,
+                     paths.CALCULATIONS_DIR, paths.GRAPHS_DIR,
+                     paths.REPORTS_DIR)
+    before = _snapshot(ARTIFACT_DIRS)
 
     app = QApplication(sys.argv)
     install_mocks()
@@ -400,6 +411,17 @@ def main():
                 os.remove(f)
         shutil.rmtree(backup, ignore_errors=True)
         shutil.rmtree(ARCHIVE_TMP, ignore_errors=True)
+        # 스모크가 새로 만든 산출물만 지운다 (실측 기록은 그대로 둔다)
+        removed = 0
+        for d, names in _snapshot(ARTIFACT_DIRS).items():
+            for name in names - before.get(d, set()):
+                try:
+                    os.remove(os.path.join(d, name))
+                    removed += 1
+                except OSError:
+                    pass
+        if removed:
+            print(f"(스모크가 만든 산출물 {removed}개 정리)")
         print("(실데이터 복원 완료)")
 
     passed = sum(RESULTS)
