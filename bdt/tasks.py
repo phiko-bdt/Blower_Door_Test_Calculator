@@ -234,7 +234,12 @@ class BackgroundTask(QThread):
 
         duty_range = coeff.get("duty_range", [20, 100])
         min_duty, max_duty = duty_range
-        initial_duty = min_duty - 1
+        # 스윕의 마지막(최저) 측정 지점.
+        # 예전엔 min_duty - 1 이었다. 이름은 '경계'인데 실제로는 측정점으로
+        # 쓰이는 값이라, 팬이 꺼질 수 있는 min_duty 아래에서 측정하고 풍량도
+        # 팬 보정 범위([min,max]) 밖으로 외삽했다. 측정하려면 팬이 확실히
+        # 돌아야 하므로 최소보다 한 단계 위에서 멈춘다.
+        lowest_duty = min_duty + 1
 
         # 측정
         measuring = {}
@@ -287,9 +292,9 @@ class BackgroundTask(QThread):
         # 목표 압력 조절이 끝났다 — 화면을 측정 차트로 넘긴다
         self.targeted.emit()
 
-        # 측정 범위 설정 — duty 지점에서 min_duty 직전까지 10등분
+        # 측정 범위 설정 — 목표 압력 지점에서 최저 측정 지점까지 10등분
         num_to_measure = 10
-        step = (duty - initial_duty) / (num_to_measure - 1)  # 간격 계산
+        step = (duty - lowest_duty) / (num_to_measure - 1)  # 간격 계산
         duty_range = [round(duty - i * step) for i in range(num_to_measure)]
 
         # 데이터 측정.
