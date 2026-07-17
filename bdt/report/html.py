@@ -157,6 +157,9 @@ def build_html(conditions, report, graph_path=None, font_path=None):
 
     return f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
+<!-- PDF 문서 제목이 된다. 없으면 뷰어 제목표시줄에 임시 HTML 파일명
+     ("_report.html")이 그대로 뜬다. 성적서 지면에는 나타나지 않는다. -->
+<title>기밀성능 시험 성적서</title>
 <style>
 {font_face}
 /* 색은 bdt.theme 이 단일 소스다 (화면·성적서가 같은 토큰을 쓴다). */
