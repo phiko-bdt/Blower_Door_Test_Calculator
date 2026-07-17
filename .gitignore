@@ -54,6 +54,9 @@ myenv/
 # git
 .git/
 
+# 중복 실행 잠금
+.bdt.lock
+
 # Claude Code 세션 파일
 .claude/
 

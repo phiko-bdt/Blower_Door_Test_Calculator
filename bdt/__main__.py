@@ -4,8 +4,10 @@
 팬이 도는 상태로 남지 않도록 안전을 보장한다.
 """
 
+import os
 import sys
 import atexit
+import fcntl
 import traceback
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
@@ -16,6 +18,26 @@ from bdt import paths
 from bdt.config import TEST_MODE
 from bdt.theme import APP_STYLE, WIN_W, WIN_H
 from bdt.flow import MainWindow, TestFlow
+
+# 중복 실행 잠금 파일. 열어둔 파일 객체가 살아 있어야 잠금이 유지되므로
+# 모듈 수준에 참조를 든다.
+_lock_file = None
+
+
+def _another_instance_running():
+    """이미 실행 중인 앱이 있으면 True.
+
+    터치스크린에서는 아이콘 더블클릭이 두 번 먹는 일이 흔한데, 앱이 두 개
+    뜨면 같은 팬 PWM 을 서로 다른 duty 로 다투게 된다 — 한쪽이 측정 중인데
+    다른 쪽이 시작하며 duty 0 을 걸어 시험을 망치는 식이다.
+    """
+    global _lock_file
+    _lock_file = open(os.path.join(paths.ROOT, ".bdt.lock"), "w")
+    try:
+        fcntl.flock(_lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return False
+    except OSError:
+        return True
 
 
 def stop_fan_on_exit():
@@ -31,6 +53,17 @@ def stop_fan_on_exit():
 
 
 def main():
+    app = QApplication(sys.argv)
+
+    # 하드웨어를 건드리기 전에 중복 실행부터 확인한다. 두 번째 인스턴스가
+    # duty 0 을 걸면 첫 인스턴스의 측정이 망가진다.
+    if _another_instance_running():
+        QMessageBox.warning(
+            None, "이미 실행 중",
+            "기밀성능 시험 앱이 이미 실행되고 있습니다.\n"
+            "열려 있는 창을 사용하세요.")
+        sys.exit(0)
+
     # Ensure the fan PWM duty is zero on startup so that the fan does not run
     # even if powered. This provides a safe default state before any test begins.
     # duty_set 이 핀 레벨을 되읽어 검증하므로, 실패하면 팬이 계속 도는 상태다.
@@ -38,7 +71,6 @@ def main():
     # 정상 종료·예외·창 닫기 등 모든 종료 경로에서 팬을 정지시킨다
     atexit.register(stop_fan_on_exit)
 
-    app = QApplication(sys.argv)
     # 전역 디자인 테마 적용
     app.setStyleSheet(APP_STYLE)
 

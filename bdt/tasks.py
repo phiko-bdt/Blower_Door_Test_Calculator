@@ -29,6 +29,11 @@ MEASURE_SECONDS = 10      # 한 지점에서 압력을 평균낼 시간 (초)
 # duty 를 1 옮길 때마다 기다릴 안정화 시간 (초).
 # duty 차가 클수록 압력이 자리 잡는 데 오래 걸려 차이에 비례해 기다린다.
 SETTLE_SECONDS_PER_DUTY = 2
+# 이보다 낮은 압력의 측정점은 바람 노이즈가 지배해 신뢰도가 낮다
+# (KS L ISO 9972 는 영기류 압력의 10배부터 측정하도록 한다).
+# 목표 압력 도달 실패 후 max duty 스윕에서 하위 지점이 여기 걸릴 수 있다.
+# 결과값은 바꾸지 않고 경고만 한다 — 회귀 제외는 별도 결정이 필요하다.
+LOW_PRESSURE_WARN_PA = 10
 
 
 class TestCancelled(Exception):
@@ -294,6 +299,9 @@ class BackgroundTask(QThread):
             p, sigma, p_min, p_max = self.live_measure(d, MEASURE_SECONDS)
             self.report(f"[{i}/{total}] 팬 세기 {d}% — 측정 완료: "
                         f"{p:.1f} Pa (변동 ±{sigma:.1f})")
+            if abs(p) < LOW_PRESSURE_WARN_PA:
+                self.report(f"⚠ 측정 압력이 {LOW_PRESSURE_WARN_PA} Pa 미만입니다 "
+                            "— 바람 영향이 커 이 지점의 신뢰도가 낮습니다")
             measuring["measured_value"].append([p, d])
             measuring["pressure_spread"].append(
                 {"duty": d, "std": sigma, "min": p_min, "max": p_max})

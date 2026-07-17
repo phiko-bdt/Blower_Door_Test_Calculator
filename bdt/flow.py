@@ -3,7 +3,8 @@
 import json
 from datetime import datetime
 
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QMainWindow, QStackedWidget
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QMainWindow,
+                             QStackedWidget, QMessageBox)
 from PyQt6.QtCore import QObject
 
 from bdt import paths
@@ -29,6 +30,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("기밀성능 시험")
+        # 측정이 진행 중인지 (TestFlow 가 갱신). 창 닫기 확인에 쓴다.
+        self.measuring = False
 
         self.header = StepHeader()
         self.stack = QStackedWidget()
@@ -40,6 +43,25 @@ class MainWindow(QMainWindow):
         outer.addWidget(self.header)
         outer.addWidget(self.stack, 1)
         self.setCentralWidget(center)
+
+    def closeEvent(self, event):
+        """측정 중에는 확인 없이 닫히지 않게 한다.
+
+        '시험 중단' 버튼에는 확인창이 있는데 창의 X 버튼이 그걸 우회해
+        몇 분치 측정이 조용히 증발했다. 팬은 atexit 이 세워주지만
+        데이터 손실은 사용자가 알고 선택해야 한다.
+        """
+        if self.measuring:
+            answer = QMessageBox.question(
+                self, "시험 진행 중",
+                "측정이 진행 중입니다. 앱을 종료할까요?\n\n"
+                "지금까지 측정한 값은 저장되지 않고, 팬은 정지합니다.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
+        event.accept()
 
     def show_page(self, page, step=None):
         """페이지를 현재 화면으로 바꾸고, 이전 페이지는 정리한다."""
@@ -92,6 +114,7 @@ class TestFlow(QObject):
         그대로 다음 단계로 넘어갔다.
         """
         self.stopped = True
+        self.window.measuring = False
         page = ErrorPage("시험을 계속할 수 없습니다", message)
         page.restart.connect(self.start)
         self.window.show_page(page)
@@ -99,6 +122,7 @@ class TestFlow(QObject):
     def on_cancelled(self):
         """사용자가 시험을 중단했다 — 조건 입력부터 다시 시작한다."""
         self.stopped = True
+        self.window.measuring = False
         self.start()
 
     def _guard(self, on_done):
@@ -134,6 +158,7 @@ class TestFlow(QObject):
 
     def next_test(self):
         """남은 시험이 있으면 준비 화면으로, 없으면 계산으로 넘어간다."""
+        self.window.measuring = False
         if self.pending:
             self.prepare(self.pending.pop(0))
         else:
@@ -156,6 +181,7 @@ class TestFlow(QObject):
         task.position.connect(page.move_crosshair)
         # 중단 버튼 → 측정 루프가 스스로 빠져나오고 팬을 세운다
         page.cancelled.connect(task.cancel)
+        self.window.measuring = True
         self._connect(task, self.next_test)
         task.start()
 
@@ -211,3 +237,5 @@ class TestFlow(QObject):
         # 화면을 가리므로, 닫으면 결과가 그대로 남아 있는 편이 낫다.
         self.summary.set_progress("시험 완료 — 성적서(report.pdf)가 화면에 표시됩니다.")
         self.summary.set_done()
+        # 다음 세대 시험을 앱 재시작 없이 시작할 수 있게 한다
+        self.summary.restart_button.clicked.connect(self.start)

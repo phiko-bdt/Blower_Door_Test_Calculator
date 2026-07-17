@@ -25,6 +25,10 @@ from bdt.theme import (
 )
 
 
+# 영기류(팬 정지) 압력의 허용 한계 (KS L ISO 9972 n항)
+ZERO_FLOW_LIMIT_PA = 3.0
+
+
 class LivePressureData(QWidget):
     """시험 준비 페이지 — 실시간 압력을 보며 측정 시작을 기다린다."""
     started = pyqtSignal()  # 측정 시작 버튼 → 다음 단계로
@@ -105,7 +109,7 @@ class LivePressureData(QWidget):
         # 상단 바: 안내 메시지(좌) + 현재 압력 스탯 타일 + 측정 시작 버튼(우)
         self.message_label = QLabel(initial_message)
         self.message_label.setObjectName("Message")
-        hint = QLabel("압력이 안정되면 측정을 시작하세요.")
+        hint = QLabel(f"팬 정지 상태에서 압력이 ±{ZERO_FLOW_LIMIT_PA:.0f} Pa 이내로 안정되면 시작하세요.")
         hint.setObjectName("Hint")
         head = QVBoxLayout()
         head.setSpacing(4)
@@ -194,6 +198,15 @@ class LivePressureData(QWidget):
         self.axis_y.setRange(low, high)
         self.axis_y.setTickCount(ticks)
 
+    def _set_stat(self, name, state):
+        """스탯 타일의 이름·상태를 바꾼다 (변화 없으면 아무 것도 안 한다)."""
+        if self.stat_name.text() == name:
+            return
+        self.stat_name.setText(name)
+        self.stat_name.setProperty("state", state)
+        self.stat_name.style().unpolish(self.stat_name)
+        self.stat_name.style().polish(self.stat_name)
+
     def update_chart(self):
         # 새로운 측정값을 데이터에 추가
         try:
@@ -203,18 +216,18 @@ class LivePressureData(QWidget):
             # 큰 숫자 자리에 문장을 넣으면 타일이 깨지므로, 값은 비우고
             # 이름 자리에 상태를 적는다 (색만으로 알리지 않는다).
             self.value_label.setText("–")
-            self.stat_name.setText("⚠ 센서 응답 없음")
-            self.stat_name.setProperty("state", "warn")
-            self.stat_name.style().unpolish(self.stat_name)
-            self.stat_name.style().polish(self.stat_name)
+            self._set_stat("⚠ 센서 응답 없음", "warn")
             print(exc)
             return
 
-        if self.stat_name.property("state") == "warn":
-            self.stat_name.setText("현재 압력")
-            self.stat_name.setProperty("state", "")
-            self.stat_name.style().unpolish(self.stat_name)
-            self.stat_name.style().polish(self.stat_name)
+        # 영기류 압력 확인 (KS L ISO 9972 n항: 절대값 3 Pa 초과면 시험을
+        # 수행하지 않는다). 이 화면은 팬 정지 상태의 준비 화면이라, 지금
+        # 읽히는 압력이 곧 영기류 압력이다. 측정을 막지는 않고 알리기만 한다
+        # — 판단은 시험자 몫이다.
+        if abs(new) > ZERO_FLOW_LIMIT_PA:
+            self._set_stat(f"⚠ 영기류 압력 ±{ZERO_FLOW_LIMIT_PA:.0f} Pa 초과", "warn")
+        else:
+            self._set_stat("현재 압력", "")
         self.value_label.setText(f"{new:.1f}")
         self.data.append(QPointF(self.data[-1].x() + 1, new))
         # 데이터가 100개를 초과하면 가장 오래된 데이터를 제거

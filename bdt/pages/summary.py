@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QVBoxLayout,
     QHBoxLayout,
-    QGridLayout,
+    QPushButton,
     QProgressBar,
 )
 from PyQt6.QtCore import Qt, QTimer
@@ -191,11 +191,19 @@ class CalculationSummary(QWidget):
         self.bar.setRange(0, 0)  # 미확정 — 남은 시간을 알 수 없다
         self.bar.setTextVisible(False)
         self.bar.setFixedWidth(200)
+        # 시험 완료 후에만 나타난다. 없으면 다음 세대를 시험하려고
+        # 앱을 껐다 켜야 했다 (오류 화면에는 '처음으로'가 있었는데
+        # 정상 완료에는 없었다).
+        self.restart_button = QPushButton("새 시험 시작")
+        self.restart_button.setMinimumWidth(180)
+        self.restart_button.setVisible(False)
+
         status_row = QHBoxLayout()
         status_row.setSpacing(14)
         status_row.addWidget(self.status)
         status_row.addStretch(1)
         status_row.addWidget(self.bar)
+        status_row.addWidget(self.restart_button)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(40, 24, 40, 24)
@@ -235,3 +243,4 @@ class CalculationSummary(QWidget):
         for row in self._rows:
             row.fill()
         self.bar.setVisible(False)
+        self.restart_button.setVisible(True)
