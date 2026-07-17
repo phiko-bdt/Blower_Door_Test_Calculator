@@ -235,10 +235,15 @@ class BackgroundTask(QThread):
         duty_range = coeff.get("duty_range", [20, 100])
         min_duty, max_duty = duty_range
         # 스윕의 마지막(최저) 측정 지점.
-        # 예전엔 min_duty - 1 이었다. 이름은 '경계'인데 실제로는 측정점으로
-        # 쓰이는 값이라, 팬이 꺼질 수 있는 min_duty 아래에서 측정하고 풍량도
-        # 팬 보정 범위([min,max]) 밖으로 외삽했다. 측정하려면 팬이 확실히
-        # 돌아야 하므로 최소보다 한 단계 위에서 멈춘다.
+        #
+        # min_duty 자체가 아니라 +1 인 이유: duty_range 의 하한은 팬이 도는
+        # 경계라 개체차에 따라 그 값에서 꺼질 수 있다. 측정점은 팬이 확실히
+        # 도는 자리여야 하므로 한 단계 위에서 멈춘다.
+        #
+        # 예전엔 min_duty - 1 이었다. initial_duty 라는 이름은 '경계'인데
+        # 실제로는 측정점으로 쓰이는 값이라 두 역할이 뒤섞였고, 그 결과
+        # 팬이 꺼질 수 있는 하한 아래에서 측정하고 풍량도 팬 보정 범위
+        # ([min,max]) 밖으로 외삽했다.
         lowest_duty = min_duty + 1
 
         # 측정
