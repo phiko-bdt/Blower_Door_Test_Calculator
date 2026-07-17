@@ -299,7 +299,7 @@ if __name__ == '__main__':
         # 결과 계산
         results_depr = depressureization.calculate_results()
         # Raw data 저장
-        now = datetime.now().strftime("%d%m%Y-%H%M%S")
+        now = datetime.now().strftime("%y%m%d-%H%M%S")
         calculations_dir = paths.ensure_dir(paths.CALCULATIONS_DIR)
         with open(os.path.join(calculations_dir, f"depressurization_{now}.json"), 'w') as file:
             json.dump(results_depr, file, indent=4)
@@ -321,7 +321,7 @@ if __name__ == '__main__':
         # 결과 계산
         results_pres = pressureization.calculate_results()
         # Raw data 저장
-        now = datetime.now().strftime("%d%m%Y-%H%M%S")
+        now = datetime.now().strftime("%y%m%d-%H%M%S")
         calculations_dir = paths.ensure_dir(paths.CALCULATIONS_DIR)
         with open(os.path.join(calculations_dir, f"pressurization_{now}.json"), 'w') as file:
             json.dump(results_pres, file, indent=4)

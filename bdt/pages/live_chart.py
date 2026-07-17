@@ -294,6 +294,18 @@ class LiveMeasurementChart(QWidget):
                 xs.extend((pressure - sigma, pressure + sigma))
                 ys.append(flow)
 
+        if not ys:
+            # 측정점이 아직 없다 — 기준선(50 Pa) 하나로 범위를 잡으면 x축이
+            # ±0.6 Pa 로 붕괴해 십자 포인터가 50 근처에 클램프돼 버린다.
+            # 씨앗 범위(시험 압력 구간)를 유지하고 기준선·십자만 갱신한다.
+            self.x_lo, self.x_hi = self.PRESSURE_MIN, self.PRESSURE_MAX
+            self.axis_x.setRange(self.x_lo, self.x_hi)
+            self.axis_y.setRange(self.flow_min, self.flow_max)
+            self.ref_line.replace([QPointF(self.PRESSURE_REF, self.flow_min),
+                                   QPointF(self.PRESSURE_REF, self.flow_max)])
+            self._redraw_crosshair()
+            return
+
         self.x_lo, self.x_hi, x_ticks = padded_range(min(xs), max(xs),
                                                       min_span=5.0)
         self.axis_x.setRange(self.x_lo, self.x_hi)

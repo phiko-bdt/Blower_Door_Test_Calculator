@@ -57,7 +57,6 @@ class BackgroundTask(QThread):
     def __init__(self, task_type):
         super().__init__()
         self.task_type = task_type
-        self.result = 0 # Initialize the result attribute
         # duty→풍량 변환에 쓰는 팬 계수 (blower_door_test 에서 설정)
         self.fan_coeff = None
         self.num_fans = 1
@@ -172,6 +171,10 @@ class BackgroundTask(QThread):
                 self.graph_plotting()
             elif self.task_type == "reporting":
                 self.reporting()
+            else:
+                # 오타·미등록 유형이 '조용한 성공'이 되면 흐름이 낡은 산출물로
+                # 다음 단계를 진행한다. 반드시 오류로 드러낸다.
+                raise RuntimeError(f"알 수 없는 작업 유형: {self.task_type!r}")
         except TestCancelled:
             # 사용자가 멈춘 것이니 오류가 아니다. 팬만 확실히 세운다.
             self._stop_fan()
@@ -297,25 +300,41 @@ class BackgroundTask(QThread):
         # 짝지어져 들어갔다. 모든 점을 이 루프에서 같은 방식으로 잰다.
         before = fan_duty
         total = len(duty_range)
-        for i, d in enumerate(duty_range, start=1):
-            hardware.duty_set(d, test=TEST_MODE)
-            # duty 를 많이 움직일수록 압력이 자리 잡는 데 오래 걸린다
-            settle = abs(before - d) * SETTLE_SECONDS_PER_DUTY
-            self.report(f"[{i}/{total}] 팬 세기 {d}% — 압력 안정화 대기 중… ({settle}초)")
-            # 대기·측정 내내 실시간으로 십자 포인터를 갱신한다
-            self.live_wait(d, settle)
-            self.report(f"[{i}/{total}] 팬 세기 {d}% — 압력 측정 중… ({MEASURE_SECONDS}초)")
-            p, sigma, p_min, p_max = self.live_measure(d, MEASURE_SECONDS)
-            self.report(f"[{i}/{total}] 팬 세기 {d}% — 측정 완료: "
-                        f"{p:.1f} Pa (변동 ±{sigma:.1f})")
-            if abs(p) < LOW_PRESSURE_WARN_PA:
-                self.report(f"⚠ 측정 압력이 {LOW_PRESSURE_WARN_PA} Pa 미만입니다 "
-                            "— 바람 영향이 커 이 지점의 신뢰도가 낮습니다")
-            measuring["measured_value"].append([p, d])
-            measuring["pressure_spread"].append(
-                {"duty": d, "std": sigma, "min": p_min, "max": p_max})
-            self.report_point(d, p, sigma)
-            before = d
+        try:
+            for i, d in enumerate(duty_range, start=1):
+                hardware.duty_set(d, test=TEST_MODE)
+                # duty 를 많이 움직일수록 압력이 자리 잡는 데 오래 걸린다
+                settle = abs(before - d) * SETTLE_SECONDS_PER_DUTY
+                self.report(f"[{i}/{total}] 팬 세기 {d}% — 압력 안정화 대기 중… ({settle}초)")
+                # 대기·측정 내내 실시간으로 십자 포인터를 갱신한다
+                self.live_wait(d, settle)
+                self.report(f"[{i}/{total}] 팬 세기 {d}% — 압력 측정 중… ({MEASURE_SECONDS}초)")
+                p, sigma, p_min, p_max = self.live_measure(d, MEASURE_SECONDS)
+                self.report(f"[{i}/{total}] 팬 세기 {d}% — 측정 완료: "
+                            f"{p:.1f} Pa (변동 ±{sigma:.1f})")
+                if abs(p) < LOW_PRESSURE_WARN_PA:
+                    self.report(f"⚠ 측정 압력이 {LOW_PRESSURE_WARN_PA} Pa 미만입니다 "
+                                "— 바람 영향이 커 이 지점의 신뢰도가 낮습니다")
+                measuring["measured_value"].append([p, d])
+                measuring["pressure_spread"].append(
+                    {"duty": d, "std": sigma, "min": p_min, "max": p_max})
+                self.report_point(d, p, sigma)
+                before = d
+        except (hardware.SensorTimeout, TestCancelled):
+            # 도중 실패·중단이어도 이미 확정한 지점들은 파일로 남긴다.
+            # 본 raw 저장은 루프 완주 뒤에만 수행되므로, 여기서 남기지 않으면
+            # 4~5분치 확정 측정값이 통째로 증발해 처음부터 재시험해야 한다.
+            if measuring["measured_value"]:
+                now = datetime.now().strftime("%y%m%d-%H%M%S")
+                partial = os.path.join(
+                    paths.ensure_dir(paths.MEASUREMENTS_DIR),
+                    f"{test}_{now}_incomplete.json")
+                with open(partial, 'w') as file:
+                    json.dump(measuring, file, indent=4)
+                self.report(
+                    f"중단 전까지의 측정값 {len(measuring['measured_value'])}개를 "
+                    f"보관했습니다: measurements/{os.path.basename(partial)}")
+            raise
 
         # 시험 종료 — 팬 정지 후 실제로 멈췄는지 확인한다
         self.report("측정 완료 — 팬을 정지하는 중…")
@@ -347,9 +366,10 @@ class BackgroundTask(QThread):
         with open(paths.CONDITIONS_JSON, 'r') as file:
             data = json.load(file)
 
-        # 아무 시험 결과 없는 경우, Just in case.
+        # 수행된 시험이 하나도 없으면 빈 결과 파일이 만들어져 뒤 단계가
+        # 이해할 수 없는 오류로 죽는다. 여기서 명확히 멈춘다.
         if not data.get("depressurization") and not data.get("pressurization"):
-            pass
+            raise RuntimeError("수행된 시험이 없어 계산할 수 없습니다.")
 
         # 결과 저장 변수 선언
         calculation_raw = {}
@@ -484,8 +504,11 @@ class BackgroundTask(QThread):
             graph_path=paths.GRAPH_PNG, font_path=paths.FONT_PATH)
 
         if not result:
-            self.report("성적서 PDF 생성 실패 (chromium 확인 필요)")
-            return
+            # return 으로 끝내면 finished 만 나가 완료 화면이 '성적서가 표시
+            # 됩니다'로 안내한다 — 파일은 없거나 이전 시험 것인데. 오류로 알린다.
+            raise RuntimeError(
+                "성적서 PDF 를 만들지 못했습니다. chromium 이 설치돼 있는지 "
+                "확인하세요.")
         self.report("성적서 생성 완료: report.pdf")
         if platform.system() == "Linux":
             self.open_pdf(pdf_path)

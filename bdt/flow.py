@@ -46,22 +46,33 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(center)
 
     def closeEvent(self, event):
-        """측정 중에는 확인 없이 닫히지 않게 한다.
+        """작업 중에는 확인 없이 닫히지 않게 하고, 닫을 때는 작업을 정리한다.
 
         '시험 중단' 버튼에는 확인창이 있는데 창의 X 버튼이 그걸 우회해
-        몇 분치 측정이 조용히 증발했다. 팬은 atexit 이 세워주지만
-        데이터 손실은 사용자가 알고 선택해야 한다.
+        몇 분치 측정이 조용히 증발했다. 그리고 확인만 받고 워커를 그대로
+        두면, 종료 후에도 살아 있는 측정 스레드가 duty 를 써넣어 앱은
+        꺼졌는데 팬이 도는 상태가 될 수 있다 (sysfs PWM 은 프로세스가
+        죽어도 유지된다). 승인 시 cancel + wait 로 반드시 정리한다.
         """
-        if self.measuring:
+        flow = getattr(self, "flow", None)
+        task = getattr(flow, "task", None) if flow else None
+        running = task is not None and task.isRunning()
+        if running:
+            if self.measuring:
+                text = ("측정이 진행 중입니다. 앱을 종료할까요?\n\n"
+                        "지금까지 측정한 값은 저장되지 않고, 팬은 정지합니다.")
+            else:
+                text = ("계산·성적서 작업이 진행 중입니다. 앱을 종료할까요?\n\n"
+                        "이번 시험의 성적서가 만들어지지 않을 수 있습니다.")
             answer = QMessageBox.question(
-                self, "시험 진행 중",
-                "측정이 진행 중입니다. 앱을 종료할까요?\n\n"
-                "지금까지 측정한 값은 저장되지 않고, 팬은 정지합니다.",
+                self, "작업 진행 중", text,
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)
             if answer != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
+            task.cancel()
+            task.wait(5000)  # 워커가 팬을 세우고 빠져나올 시간
         event.accept()
 
     def show_page(self, page, step=None):
@@ -126,19 +137,39 @@ class TestFlow(QObject):
         self.window.measuring = False
         self.start()
 
-    def _guard(self, on_done):
-        """실패·중단했으면 다음 단계로 넘어가지 않게 감싼다."""
+    def _connect(self, task, on_done):
+        """작업의 완료·실패·중단 시그널을 한 자리에서 연결한다.
+
+        실패·중단 표시는 flow 수준 플래그가 아니라 **그 작업 자신**에 남긴다.
+        예전엔 flow.stopped 하나로 판단했는데, 중단 시 on_cancelled → start()
+        가 stopped 를 즉시 False 로 되돌린 뒤 큐에 남아 있던 finished 가
+        가드를 통과해 계산 단계로 직행했다 — 지난 시험의 raw 파일로 성적서가
+        발행되는 레이스다. 같은 작업의 시그널은 emit 순서대로 배달되므로
+        작업 객체에 남긴 표시는 레이스가 없다.
+        """
+        task._halted = False
+
+        def on_error(message):
+            task._halted = True
+            self.on_error(message)
+
+        def on_cancelled():
+            task._halted = True
+            self.on_cancelled()
+
         def proceed():
-            if self.stopped:
+            if task._halted:
                 return
             on_done()
-        return proceed
 
-    def _connect(self, task, on_done):
-        """작업의 완료·실패·중단 시그널을 한 자리에서 연결한다."""
-        task.error.connect(self.on_error)
-        task.cancelled.connect(self.on_cancelled)
-        task.finished.connect(self._guard(on_done))
+        task.error.connect(on_error)
+        task.cancelled.connect(on_cancelled)
+        task.finished.connect(proceed)
+        # QThread 는 파이썬 참조가 사라져도 C++ 스레드가 정리 중일 수 있어,
+        # 마지막 참조가 too early 로 끊기면 "Destroyed while thread is still
+        # running" 으로 죽는다. flow 를 부모로 걸어 수명을 보장한다
+        # (시험당 작업 몇 개 수준이라 누적 부담은 무시할 만하다).
+        task.setParent(self)
         self.task = task
 
     def on_conditions_saved(self):
@@ -199,7 +230,7 @@ class TestFlow(QObject):
         이전(조절) 페이지는 show_page 가 정리하며, 파괴된 위젯으로 가던
         시그널 연결은 Qt 가 자동으로 끊는다.
         """
-        if self.stopped:
+        if getattr(task, "_halted", False):
             return
         label = self.TESTS[test]
         page = LiveMeasurementChart(f"{label} 시험 측정 중…", num_fans=self.fan_count)

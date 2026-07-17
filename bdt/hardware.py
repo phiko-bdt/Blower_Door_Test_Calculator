@@ -152,11 +152,15 @@ SENSOR_BYTE_COUNT = 0x02
 RESPONSE_SIZE = 7       # 주소 1 + 기능 1 + 바이트수 1 + 값 2 + CRC 2
 
 
+# CRC 함수는 모듈 수준에서 한 번만 만든다. 호출마다 Crc 객체를 만들면
+# 256 엔트리 테이블을 매번 재생성한다 (Pi5 실측 257µs vs 0.24µs — 1000배).
+# 수신 프레임마다 검증하는 핫 패스라 차이가 누적된다.
+_modbus_crc16 = crcmod.predefined.mkPredefinedCrcFun('modbus')
+
+
 def _modbus_crc(payload):
     """Modbus RTU CRC16 값을 계산한다."""
-    crc = crcmod.predefined.Crc('modbus')
-    crc.update(payload)
-    return crc.crcValue
+    return _modbus_crc16(payload)
 
 
 def _parse_pressure_frame(response):
@@ -187,10 +191,17 @@ def pressure_read(average_time=0.1, port='/dev/ttyUSB0', baudrate=9600, test=Tru
     if test:
         import random
         return random.randrange(0, 100)
-    # 시리얼 연결
-    ser = serial.Serial(port=port,
-                        baudrate=baudrate,
-                        timeout=1)
+    # 시리얼 연결. 포트 소멸(USB 뽑힘)은 SerialException 인데, 호출부들은
+    # SensorTimeout 만 잡도록 계약돼 있다 — 변환하지 않으면 100ms GUI 타이머
+    # 슬롯에서 미처리 예외로 앱이 통째로 죽는다.
+    try:
+        ser = serial.Serial(port=port,
+                            baudrate=baudrate,
+                            timeout=1)
+    except (serial.SerialException, OSError) as exc:
+        raise SensorTimeout(
+            f"압력 센서 포트({port})를 열 수 없습니다. "
+            f"USB 연결을 확인하세요. ({exc})") from exc
     # 측정 시작 시간
     time_start = time.time()
     # 평균 값을 위한 변수 선언
@@ -207,6 +218,7 @@ def pressure_read(average_time=0.1, port='/dev/ttyUSB0', baudrate=9600, test=Tru
     # 반복 측정
     try:
         while True:
+            # (루프 안의 시리얼 I/O 도중 포트가 사라질 수 있다 — 아래 except)
             # 앞선 응답의 잔여 바이트가 남아 있으면 다음 프레임이 어긋나 읽힌다.
             # 요청 전에 입력 버퍼를 비워 매번 프레임 경계에서 시작한다.
             ser.reset_input_buffer()
@@ -239,6 +251,10 @@ def pressure_read(average_time=0.1, port='/dev/ttyUSB0', baudrate=9600, test=Tru
                 raise SensorTimeout(
                     f"압력 센서({port})가 응답하지 않습니다. "
                     "센서 연결과 전원을 확인하세요.")
+    except (serial.SerialException, OSError) as exc:
+        raise SensorTimeout(
+            f"압력 센서({port}) 통신 중 연결이 끊어졌습니다. "
+            f"USB 연결을 확인하세요. ({exc})") from exc
     finally:
         ser.close()
 

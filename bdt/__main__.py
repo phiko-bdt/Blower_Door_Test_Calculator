@@ -67,7 +67,15 @@ def main():
     # Ensure the fan PWM duty is zero on startup so that the fan does not run
     # even if powered. This provides a safe default state before any test begins.
     # duty_set 이 핀 레벨을 되읽어 검증하므로, 실패하면 팬이 계속 도는 상태다.
-    fan_stop_failed = hardware.duty_set(0, test=TEST_MODE) != 0
+    # PWMUnavailable(오버레이 미적용·권한 문제)이 나도 죽지 않고 창을 띄운 뒤
+    # 경고로 알린다 — 예외로 즉사하면 터치스크린에서는 창도 안내도 없다.
+    fan_stop_error = None
+    try:
+        fan_stop_failed = hardware.duty_set(0, test=TEST_MODE) != 0
+    except Exception as exc:
+        traceback.print_exc()
+        fan_stop_failed = True
+        fan_stop_error = str(exc)
     # 정상 종료·예외·창 닫기 등 모든 종료 경로에서 팬을 정지시킨다
     atexit.register(stop_fan_on_exit)
 
@@ -88,16 +96,20 @@ def main():
     window.resize(WIN_W, WIN_H)
     window.show()
 
-    # 시작 시 팬 정지에 실패했다면(PWM 핀 손상 의심) 시험 전에 반드시 알린다
+    # 시작 시 팬 정지에 실패했다면 시험 전에 반드시 알린다
     if fan_stop_failed:
-        QMessageBox.warning(
-            window, "팬 정지 실패",
-            f"팬을 정지시키지 못했습니다 (PWM 핀 GPIO{hardware.PWM_GPIO} 손상 의심).\n\n"
-            "팬이 계속 회전할 수 있으니 전원을 수동으로 차단하고,\n"
-            "PWM 배선과 핀 상태를 점검한 뒤 시험을 진행하세요.")
+        if fan_stop_error:
+            detail = f"원인: {fan_stop_error}"
+        else:
+            detail = (f"PWM 핀 GPIO{hardware.PWM_GPIO} 손상이 의심됩니다.\n"
+                      "팬이 계속 회전할 수 있으니 전원을 수동으로 차단하고,\n"
+                      "PWM 배선과 핀 상태를 점검한 뒤 시험을 진행하세요.")
+        QMessageBox.warning(window, "팬 정지 실패",
+                            f"팬을 정지시키지 못했습니다.\n\n{detail}")
 
     # 시험 절차 시작 (이후 진행은 시그널을 따라 페이지만 바뀐다)
     flow = TestFlow(window)
+    window.flow = flow  # closeEvent 가 실행 중 작업을 정리할 수 있게
     flow.start()
 
     sys.exit(app.exec())

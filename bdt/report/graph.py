@@ -164,7 +164,7 @@ def plot_graph(resultsd, resultsp, report):
     fig.savefig(paths.GRAPH_PNG, dpi=300, bbox_inches="tight", facecolor="white")
     plt.close(fig)
 
-    now = datetime.now().strftime("%d%m%Y-%H%M%S")
+    now = datetime.now().strftime("%y%m%d-%H%M%S")
     graphs_dir = paths.ensure_dir(paths.GRAPHS_DIR)
     shutil.copyfile(paths.GRAPH_PNG, os.path.join(graphs_dir, f"graph_{now}.png"))
 

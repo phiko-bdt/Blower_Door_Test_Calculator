@@ -32,8 +32,8 @@ PENDING = "…"
 
 
 def _fmt(value, digits=2):
-    """숫자를 자리수 맞춰 문자열로. 없으면 '–'."""
-    if value is None:
+    """숫자를 자리수 맞춰 문자열로. 없으면 '–' (성적서 _num 과 같은 규약)."""
+    if value is None or value in ("", "-"):
         return "–"
     try:
         return f"{float(value):,.{digits}f}"

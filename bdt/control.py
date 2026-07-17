@@ -75,7 +75,6 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
 
     # 실패 조건
     failure_time = 0
-    failure_threshold = 20
 
     # 종료 측정 조건
     final_measure_time = 5
@@ -140,12 +139,15 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
             duty_real = duty_transformation(duty, duty_min, duty_max)
             return (duty_real, True, current)
 
-        # duty 100으로 설정해도 목표 압력에 도달하지 못하는 경우
-        if duty == 100 and error_pressure > failure_threshold:
+        # duty 가 한계에 붙었는데 수렴 문턱(pressure_threshold)을 넘는 오차가
+        # 남아 있으면 실패로 센다. 예전엔 실패 문턱이 20 Pa 로 따로 있어서
+        # 오차가 7~20 Pa 인 채 duty 100 에 포화되면 수렴도 실패도 아닌
+        # 데드존에 갇혀 영영 반환하지 않았다.
+        if duty == 100 and error_pressure >= pressure_threshold:
             notify(f"팬을 최대로 돌려도 목표 {target} Pa에 못 미칩니다 "
                    f"(현재 {current:.1f} Pa) — 누기량이 많거나 개구부가 열려 있는지 확인하세요")
             failure_time += time_diff
-        elif duty == 0 and error_pressure > failure_threshold:
+        elif duty == 0 and error_pressure >= pressure_threshold:
             notify(f"팬을 멈춰도 압력이 목표 {target} Pa를 넘습니다 "
                    f"(현재 {current:.1f} Pa) — 외풍이나 센서 상태를 확인하세요")
             failure_time += time_diff

@@ -171,8 +171,11 @@ class LivePressureData(QWidget):
         layout.addLayout(top_bar)
         layout.addWidget(chart_card, 1)
 
-        # 초기 데이터 (x는 시간, y는 압력)
-        self.data = [QPointF(i, hardware.pressure_read(test=TEST_MODE)) for i in range(10)]
+        # 초기 데이터는 0 으로 깔고 실제 값은 타이머(update_chart)가 채운다.
+        # 예전처럼 생성자에서 센서를 10번 읽으면 (a) GUI 스레드가 읽기당
+        # 최대 5초씩 얼어붙고 (b) 센서 미연결 시 슬롯 안 미처리 예외로
+        # 앱이 즉사했다. update_chart 는 SensorTimeout 을 잡는다.
+        self.data = [QPointF(i, 0.0) for i in range(10)]
         self.series.replace(self.data)
         self.rescale_y()
 
