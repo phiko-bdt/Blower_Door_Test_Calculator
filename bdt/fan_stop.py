@@ -1,14 +1,14 @@
 """부팅 시 팬 PWM duty 0 고정 (안전 초기화).
 
 `python3 -m bdt.fan_stop` 으로 실행하며, systemd 유닛 bdt-fan-stop.service 가
-부팅 때 pigpiod 이후 한 번 호출한다.
+부팅 때 한 번 호출한다.
 
 목적(fool proof): 앱을 켜기 전에 팬 전원을 먼저 올리는 운용 순서에서도 팬이
 돌지 않게 보장한다. GPIO 는 부팅 직후 입력(하이임피던스) 상태라 팬 컨트롤러가
 PWM 선을 HIGH 로 읽어 100% 로 도는 사고가 가능하다. duty 0% 를 명시적으로
 출력해 핀을 LOW 로 고정해 둔다.
 
-hardware_PWM 설정은 프로세스가 끝나도 pigpiod 가 유지하므로, 이 스크립트가
+sysfs PWM 설정은 프로세스가 끝나도 커널이 유지하므로, 이 스크립트가
 종료된 뒤에도 duty 0 은 그대로 남는다.
 
 핀 레벨 되읽기(duty_set 의 검증)에 실패하면 0 이 아닌 값으로 종료해
@@ -21,8 +21,8 @@ import time
 from bdt import hardware
 from bdt.config import TEST_MODE
 
-# pigpiod 는 Type=forking 이라 유닛이 "시작됨"이 된 뒤에도 소켓이 잠깐 늦게
-# 열릴 수 있다. 부팅 직후 한 번 실패했다고 팬을 방치하면 안 되므로 재시도한다.
+# 부팅 직후에는 PWM 오버레이 적용·udev 권한 설정이 아직 안 끝났을 수 있다.
+# 한 번 실패했다고 팬을 방치하면 안 되므로 재시도한다.
 RETRY_COUNT = 10
 RETRY_INTERVAL = 1.0  # 초
 
@@ -33,9 +33,9 @@ def main():
     for attempt in range(1, RETRY_COUNT + 1):
         try:
             result = hardware.duty_set(0, test=TEST_MODE)
-        except Exception as exc:  # pigpiod 연결 실패 등
+        except Exception as exc:  # PWM 준비 안 됨 등
             last_error = exc
-            print(f"[{attempt}/{RETRY_COUNT}] pigpio 연결 대기 중: {exc}")
+            print(f"[{attempt}/{RETRY_COUNT}] 팬 PWM 준비 대기 중: {exc}")
             time.sleep(RETRY_INTERVAL)
             continue
 
@@ -50,7 +50,7 @@ def main():
               file=sys.stderr)
         return 1
 
-    print(f"팬 정지 실패: pigpio 데몬에 연결하지 못했습니다 ({last_error}).",
+    print(f"팬 정지 실패: 팬 PWM 을 준비하지 못했습니다 ({last_error}).",
           file=sys.stderr)
     return 1
 

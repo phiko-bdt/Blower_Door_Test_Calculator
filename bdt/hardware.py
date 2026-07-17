@@ -1,18 +1,23 @@
 """센서 입력·팬 PWM 출력 하드웨어 제어.
 
-라즈베리파이4의 pigpio(하드웨어 PWM)와 시리얼 압력 센서를 다룬다.
+라즈베리파이5의 하드웨어 PWM(RP1, sysfs)과 시리얼 압력 센서를 다룬다.
 
-pigpio 연결은 호출마다 새로 만들지 않고 모듈 수준에서 한 번만 열어 재사용한다
-(`_get_pi()`의 지연 초기화 싱글턴). 앱 종료 시 atexit 훅이 duty 0%를 보장한 뒤
-연결을 정리한다.
+**pigpio 를 쓰지 않는다.** pigpio 는 BCM2711 주변장치 레지스터를 /dev/mem 으로
+직접 두드리는데, 파이5는 GPIO 를 RP1 칩이 PCIe 너머에서 담당해 구조적으로
+동작하지 않는다("unknown rev code (c04171)" → "not a raspberry pi"). 대신 커널이
+노출하는 sysfs PWM(/sys/class/pwm)으로 같은 하드웨어 PWM 을 쓴다.
+
+sysfs PWM 설정은 프로세스가 끝나도 커널에 남으므로(= 팬이 계속 돈다), 앱 종료 시
+atexit 훅이 duty 0% 를 보장한다.
 """
 
 import atexit
+import os
 import struct
+import subprocess
 import time
 
 import crcmod
-import pigpio
 import serial
 
 
@@ -20,61 +25,124 @@ import serial
 # 교체 이력: GPIO18(물리핀 12) → GPIO12(물리핀 32) → GPIO13(물리핀 33)
 # 앞의 두 핀은 모두 LOW 구동 불가(출력 싱크 손상)로 폐기했다. duty 0%를 줘도
 # 핀이 2.4V 아래로 내려가지 않아 팬이 항상 100%로 동작했다.
-# 두 번 연속 같은 방식으로 손상된 원인이 아직 규명되지 않았으므로 이 핀도
-# 같은 식으로 죽을 수 있다. duty_set() 후 핀 레벨을 되읽어 확인할 것.
-PWM_GPIO = 13  # 하드웨어 PWM1 (물리핀 33)
+# 원인은 팬 PWM 선 대신 sensor(TACH) 선에 물린 채 팬을 돌린 배선 실수로 보인다
+# (TACH 는 12V 로 풀업된 출력이라 3.3V 패드의 싱크측이 탄다). 그래도 같은 실수는
+# 또 날 수 있으므로 duty_set() 은 핀 레벨을 되읽어 계속 확인한다.
+PWM_GPIO = 13  # 물리핀 33
 PWM_FREQUENCY = 1000  # 1kHz
+PWM_PERIOD_NS = 1_000_000_000 // PWM_FREQUENCY  # 1kHz → 1,000,000ns
 
-# 팬 전원은 수동 공급이라 릴레이(GPIO23)는 실사용하지 않는다.
-# 제어 코드는 쓰이지 않은 채 남아 있어 삭제했다 (필요해지면 git 이력 참고).
+# GPIO12·13 이 붙는 RP1 PWM 컨트롤러의 장치 이름.
+# ⚠️ CPU 쿨링팬은 다른 컨트롤러(1f0009c000.pwm)의 채널 3 을 쓴다. 그쪽을 건드리면
+# 파이가 냉각을 잃는다. 그리고 /sys/class/pwm/pwmchipN 의 N 은 부팅마다 바뀔 수
+# 있으므로 번호가 아니라 반드시 장치 이름으로 찾는다.
+PWM_CHIP_DEVICE = "1f00098000.pwm"
+PWM_CHANNEL = 1  # GPIO13 = PWM0_CHAN1 (dtoverlay=pwm-2chan 이 매핑)
+
+PWM_SYSFS_ROOT = "/sys/class/pwm"
 
 
 class SensorTimeout(RuntimeError):
     """압력 센서가 제한 시간 안에 응답하지 않을 때 발생한다."""
 
 
-# ── pigpio 연결 재사용 ──────────────────────────────────────
-# 호출마다 pigpio.pi()/stop() 을 반복하면 데몬 소켓을 계속 여닫아 비효율적이고,
-# 종료 타이밍에 따라 팬이 도는 상태로 남을 위험이 있다. 지연 초기화 싱글턴으로
-# 연결을 한 번만 열어 재사용하고, atexit 에서 duty 0% + stop() 을 보장한다.
-_pi = None
+class PWMUnavailable(RuntimeError):
+    """팬 PWM 하드웨어를 쓸 수 없다 (오버레이 미적용·권한 문제 등)."""
 
 
-def _get_pi():
-    """공유 pigpio 연결을 반환한다. 없으면 지연 생성한다.
-
-    연결이 끊겼으면(데몬 재시작 등) 다시 연결을 시도한다.
-    """
-    global _pi
-    if _pi is None or not _pi.connected:
-        _pi = pigpio.pi()
-        if not _pi.connected:
-            raise RuntimeError(
-                "pigpio 데몬에 연결하지 못했습니다. 'sudo pigpiod' 로 "
-                "pigpiod 가 실행 중인지 확인하세요.")
-    return _pi
+# ── sysfs PWM 준비 (지연 초기화) ────────────────────────────
+# 채널 export·주기 설정은 한 번만 하면 되므로 결과를 캐시한다.
+_pwm_dir = None
 
 
-def _shutdown_pi():
-    """종료 시 팬을 반드시 멈추고(duty 0%) pigpio 연결을 정리한다.
+def _find_chip():
+    """GPIO13 이 붙은 PWM 컨트롤러 디렉터리를 장치 이름으로 찾는다."""
+    if not os.path.isdir(PWM_SYSFS_ROOT):
+        raise PWMUnavailable(
+            "커널에 PWM 인터페이스(/sys/class/pwm)가 없습니다.")
+    for name in sorted(os.listdir(PWM_SYSFS_ROOT)):
+        chip = os.path.join(PWM_SYSFS_ROOT, name)
+        device = os.path.realpath(os.path.join(chip, "device"))
+        if os.path.basename(device) == PWM_CHIP_DEVICE:
+            return chip
+    raise PWMUnavailable(
+        f"팬 PWM 컨트롤러({PWM_CHIP_DEVICE})를 찾지 못했습니다. "
+        "/boot/firmware/config.txt 에 "
+        "'dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4' 가 있는지 "
+        "확인하고 재부팅하세요.")
 
-    atexit 로 등록되어 앱 종료 시 자동 호출된다. 연결을 실제로 연 적이 없으면
+
+def _write(path, value):
+    with open(path, "w") as f:
+        f.write(str(value))
+
+
+def _wait_writable(path, timeout=3.0):
+    """udev 가 소유권을 gpio 그룹으로 바꿔 쓸 수 있게 될 때까지 기다린다."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if os.access(path, os.W_OK):
+            return
+        time.sleep(0.02)
+    raise PWMUnavailable(
+        f"{path} 에 쓸 수 있게 되기를 {timeout}초 기다렸으나 실패했습니다. "
+        "udev 규칙(/etc/udev/rules.d/99-com.rules)과 실행 계정의 "
+        "'gpio' 그룹 소속을 확인하세요.")
+
+
+def _get_pwm():
+    """PWM 채널 디렉터리를 반환한다. 처음이면 export·주기 설정까지 한다."""
+    global _pwm_dir
+    if _pwm_dir is not None and os.path.isdir(_pwm_dir):
+        return _pwm_dir
+
+    chip = _find_chip()
+    channel_dir = os.path.join(chip, f"pwm{PWM_CHANNEL}")
+    duty_path = os.path.join(channel_dir, "duty_cycle")
+    try:
+        if not os.path.isdir(channel_dir):
+            _write(os.path.join(chip, "export"), PWM_CHANNEL)
+            # export 하면 커널이 디렉터리를 만들고, **그 뒤에** udev 가 소유권을
+            # root:gpio 로 바꿔준다(약 50ms). 디렉터리만 보고 바로 쓰면 아직
+            # root:root 라 PermissionError 가 난다. 쓸 수 있을 때까지 기다린다.
+            _wait_writable(duty_path)
+        # 주기를 먼저 잡아야 duty_cycle 을 그 안의 값으로 쓸 수 있다.
+        # duty 를 먼저 0 으로 내려야 주기 변경 중 팬이 튀지 않는다.
+        _write(duty_path, 0)
+        _write(os.path.join(channel_dir, "period"), PWM_PERIOD_NS)
+        _write(os.path.join(channel_dir, "enable"), 1)
+    except PermissionError as exc:
+        raise PWMUnavailable(
+            "PWM sysfs 에 쓸 권한이 없습니다. 실행 계정이 'gpio' 그룹에 "
+            f"속해 있는지 확인하세요. ({exc})") from exc
+    except OSError as exc:
+        raise PWMUnavailable(f"팬 PWM 초기화에 실패했습니다. ({exc})") from exc
+
+    _pwm_dir = channel_dir
+    return _pwm_dir
+
+
+def _shutdown_pwm():
+    """종료 시 팬을 반드시 멈춘다 (duty 0%).
+
+    atexit 로 등록되어 앱 종료 시 자동 호출된다. PWM 을 실제로 연 적이 없으면
     (TEST_MODE 등) 아무 것도 하지 않는다.
+
+    enable 은 끄지 않는다. 끄면 핀이 뜨거나 정의되지 않은 상태가 될 수 있어,
+    duty 0% 로 LOW 를 계속 능동적으로 물고 있는 편이 안전하다.
     """
-    global _pi
-    if _pi is None:
+    global _pwm_dir
+    if _pwm_dir is None:
         return
     try:
-        if _pi.connected:
-            # 종료 직전 팬 정지 보장.
-            _pi.hardware_PWM(PWM_GPIO, PWM_FREQUENCY, 0)
+        _write(os.path.join(_pwm_dir, "duty_cycle"), 0)
+    except OSError:
+        pass
     finally:
-        if _pi.connected:
-            _pi.stop()
-        _pi = None
+        _pwm_dir = None
 
 
-atexit.register(_shutdown_pi)
+atexit.register(_shutdown_pwm)
 
 
 # 압력 센서 Modbus 프레임 규격 (Lefoo, 홀딩 레지스터 1개 읽기)
@@ -195,22 +263,41 @@ def duty_set(duty, test=True):
     # 허용 범위(0~100)를 벗어나면 잘라낸다.
     duty_value = max(0, min(100, duty_value))
 
-    # 공유 pigpio 연결 재사용 (호출마다 새로 열지 않는다)
-    pi = _get_pi()
+    # sysfs 하드웨어 PWM (지연 초기화 후 재사용)
+    channel_dir = _get_pwm()
 
-    # Set the hardware PWM
-    # The range of duty cycle is from 0 to 1,000,000 (representing 0% to 100%)
-    duty_cycle = duty_value * 10_000
+    # duty_cycle 은 주기(ns) 기준의 ON 시간이다.
+    # 주기가 1,000,000ns 이므로 1% = 10,000ns.
+    duty_ns = duty_value * (PWM_PERIOD_NS // 100)
+    _write(os.path.join(channel_dir, "duty_cycle"), duty_ns)
 
-    # Initialize the PWM on the specified pin
-    pi.hardware_PWM(PWM_GPIO, PWM_FREQUENCY, duty_cycle)
-
-    healthy = _verify_pin_level(pi, duty_value)
+    healthy = _verify_pin_level(duty_value)
 
     return 0 if healthy else -1
 
 
-def _verify_pin_level(pi, duty_value):
+def _read_pin_level():
+    """GPIO13 의 현재 레벨을 읽는다 (1=HIGH, 0=LOW, None=읽기 실패).
+
+    핀이 PWM 기능(Alt0)에 물려 있어 일반 GPIO 읽기로는 잡히지 않는다.
+    파이5의 `pinctrl` 은 Alt 모드에서도 실제 핀 레벨을 보여준다.
+    (파이4 의 raspi-gpio 는 파이5 에서 동작하지 않는다.)
+    출력 예: `13: a0    pd | lo // GPIO13 = PWM0_CHAN1`
+    """
+    try:
+        out = subprocess.run(["pinctrl", "get", str(PWM_GPIO)],
+                             capture_output=True, text=True, timeout=2).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    head = out.split("//")[0]
+    if "| hi" in head:
+        return 1
+    if "| lo" in head:
+        return 0
+    return None
+
+
+def _verify_pin_level(duty_value):
     """duty 0%/100%는 핀 레벨이 고정되므로 되읽어 손상 여부를 확인한다.
 
     그 사이 duty는 PWM이 토글 중이라 단발 read로 판별할 수 없어 검사하지 않는다.
@@ -223,8 +310,14 @@ def _verify_pin_level(pi, duty_value):
         return True
 
     time.sleep(0.05)
-    levels = [pi.read(PWM_GPIO) for _ in range(5)]
+    levels = [_read_pin_level() for _ in range(5)]
     if all(level == expected for level in levels):
+        return True
+    if all(level is None for level in levels):
+        # 레벨을 못 읽는 것과 핀이 망가진 것은 다르다. 검증을 못 했다고 해서
+        # 정상 동작을 막지는 않되, 안전 검사가 꺼졌음은 반드시 알린다.
+        print(f"경고: pinctrl 로 GPIO{PWM_GPIO} 레벨을 읽지 못해 핀 손상 검사를 "
+              "건너뜁니다. 팬이 실제로 멈췄는지 직접 확인하세요.")
         return True
 
     print(f"경고: duty {duty_value}% 설정 후에도 GPIO{PWM_GPIO}(물리핀 33)가 "
