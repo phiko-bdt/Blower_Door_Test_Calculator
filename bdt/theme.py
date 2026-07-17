@@ -241,6 +241,10 @@ QLineEdit, QComboBox {{
     border: 1px solid {COLOR_LINE};
     border-radius: 8px;
 }}
+/* 필수 입력칸 — 라벨의 ＊ 와 함께 필수임을 알린다 */
+QLineEdit[required="true"], QComboBox[required="true"] {{
+    border: 1.5px solid {COLOR_ACCENT};
+}}
 QLineEdit:focus, QComboBox:focus {{
     border: 2px solid {COLOR_ACCENT};
 }}

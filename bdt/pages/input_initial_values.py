@@ -17,9 +17,10 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QFrame,
 )
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 
 from bdt import paths
+from bdt.theme import COLOR_ACCENT
 from bdt.widgets import PageHeader, SectionTitle
 
 
@@ -40,14 +41,60 @@ class InputInitialValues(QWidget):
         root.addWidget(PageHeader("기밀성능 시험", "Building Airtightness Test"))
 
         # 안내 문구
-        hint = QLabel("‘실내 체적’은 필수 입력이며, 감압·가압 시험 중 하나 이상을 선택해야 합니다.")
+        hint = QLabel("＊ 표시된 항목은 필수입니다. 나머지는 성적서에 실릴 정보로, 비워 둘 수 있습니다.")
         hint.setObjectName("Hint")
         root.addWidget(hint)
 
-        root.addWidget(SectionTitle("시험 정보"))
+        self.input_fields = {}
 
-        # 입력 필드와 레이블 생성
-        # (표시되는 레이블, 저장되는 key, placeholder)
+        # ── 필수 항목 — 시험 수행에 반드시 필요한 값만 따로 묶고
+        #    테두리를 accent 색으로 둘러 눈에 띄게 한다 (색만으로 구분하지
+        #    않도록 라벨에도 ＊ 표시를 함께 단다)
+        root.addWidget(SectionTitle("필수 항목"))
+        required_card = QFrame()
+        required_card.setObjectName("Card")
+        req = QGridLayout(required_card)
+        req.setContentsMargins(28, 24, 28, 24)
+        req.setHorizontalSpacing(24)
+        req.setVerticalSpacing(16)
+        req.setColumnStretch(1, 1)
+        req.setColumnStretch(3, 1)
+
+        volume_field = QLineEdit()
+        volume_field.setPlaceholderText("예: 424.21 — 숫자만 입력")
+        volume_field.setProperty("required", True)
+        self.input_fields["interior volume"] = volume_field
+        req.addWidget(self._required_label("실내 체적 (㎥)"), 0, 0)
+        req.addWidget(volume_field, 0, 1)
+
+        # 팬 수량 — duty→누기량 환산이 팬 개수에 비례하므로 반드시 맞아야 한다.
+        # (팬 커버 선택은 기능을 쓰지 않기로 해 UI 에서 뺐다. 저장하지 않으면
+        # 계산부가 기본값 "none" 을 쓴다.)
+        self.count_combo = QComboBox()
+        self.count_combo.addItems(["1", "2"])
+        self.count_combo.setProperty("required", True)
+        req.addWidget(self._required_label("팬 수량"), 0, 2)
+        req.addWidget(self.count_combo, 0, 3)
+
+        # 수행할 시험 (감압 / 가압) — 하나 이상 필수
+        self.checkbox_states = {}
+        checkbox1 = QCheckBox("감압 시험")
+        checkbox1.setObjectName("depressurization")
+        checkbox1.stateChanged.connect(self.save_checkbox_state)
+        checkbox2 = QCheckBox("가압 시험")
+        checkbox2.setObjectName("pressurization")
+        checkbox2.stateChanged.connect(self.save_checkbox_state)
+        check_row = QHBoxLayout()
+        check_row.setSpacing(32)
+        check_row.addWidget(checkbox1)
+        check_row.addWidget(checkbox2)
+        check_row.addStretch(1)
+        req.addWidget(self._required_label("수행할 시험"), 1, 0)
+        req.addLayout(check_row, 1, 1, 1, 3)
+        root.addWidget(required_card)
+
+        # ── 시험 정보 (선택) — 성적서에 실리는 문자 정보 ─────────
+        root.addWidget(SectionTitle("시험 정보 (선택)"))
         labels = [
             ("시험 목적", "purpose", "신축 공동주택 기밀성능 확인"),
             ("시험 위치", "location", "서울시 송파구 풍납동 497"),
@@ -56,11 +103,9 @@ class InputInitialValues(QWidget):
             ("설계자", "designer", "OO건축사사무소"),
             ("시험자", "tester", "김철수 (주)기밀시험"),
             ("시공자", "builder", "OO건축"),
-            ("실내 체적 (㎥)", "interior volume", "예: 424.21 — 숫자만 입력"),
             ("연면적 (㎡)", "floor area", "92.4"),
             ("구조", "structure", "경량목구조")
         ]
-        self.input_fields = {}
 
         # 입력 폼을 카드 안에 2열(라벨·입력 | 라벨·입력)로 배치해 와이드 화면을 활용
         card = QFrame()
@@ -81,40 +126,7 @@ class InputInitialValues(QWidget):
             form.addWidget(label, r, c * 2)
             form.addWidget(input_field, r, c * 2 + 1)
             self.input_fields[label_key] = input_field
-        base_row = (len(labels) + 1) // 2
-
-        # Fan Cover / Fan Count 를 같은 행에 나란히 배치
-        self.cover_combo = QComboBox()
-        self.cover_combo.addItems(["none", "low", "high"])
-        self.count_combo = QComboBox()
-        self.count_combo.addItems(["1", "2"])
-        cover_label = QLabel("팬 커버")
-        cover_label.setObjectName("FieldLabel")
-        count_label = QLabel("팬 수량")
-        count_label.setObjectName("FieldLabel")
-        form.addWidget(cover_label, base_row, 0)
-        form.addWidget(self.cover_combo, base_row, 1)
-        form.addWidget(count_label, base_row, 2)
-        form.addWidget(self.count_combo, base_row, 3)
         root.addWidget(card)
-
-        # 수행할 시험 선택
-        root.addWidget(SectionTitle("수행할 시험"))
-
-        # 체크박스 (감압 / 가압) — 가로 배치
-        self.checkbox_states = {}
-        check_row = QHBoxLayout()
-        check_row.setSpacing(32)
-        checkbox1 = QCheckBox("감압 시험")
-        checkbox1.setObjectName("depressurization")
-        checkbox1.stateChanged.connect(self.save_checkbox_state)
-        checkbox2 = QCheckBox("가압 시험")
-        checkbox2.setObjectName("pressurization")
-        checkbox2.stateChanged.connect(self.save_checkbox_state)
-        check_row.addWidget(checkbox1)
-        check_row.addWidget(checkbox2)
-        check_row.addStretch(1)
-        root.addLayout(check_row)
 
         root.addStretch(1)
 
@@ -128,6 +140,14 @@ class InputInitialValues(QWidget):
         btn_row.addWidget(save_button)
         btn_row.addStretch(1)
         root.addLayout(btn_row)
+
+    @staticmethod
+    def _required_label(text):
+        """필수 항목 라벨 — accent 색 ＊ 를 붙인다 (테두리 색과 짝)."""
+        label = QLabel(f'{text} <span style="color:{COLOR_ACCENT};">＊</span>')
+        label.setObjectName("FieldLabel")
+        label.setTextFormat(Qt.TextFormat.RichText)
+        return label
 
     def save_checkbox_state(self):
         sender = self.sender()
@@ -197,7 +217,6 @@ class InputInitialValues(QWidget):
             value = input_field.text()
             data[key] = value
         # Fan options
-        data["fan_cover"] = self.cover_combo.currentText()
         data["fan_count"] = int(self.count_combo.currentText())
         # 체크박스 데이터 저장
         for key, checkbox in self.checkbox_states.items():

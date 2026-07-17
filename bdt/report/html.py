@@ -154,8 +154,6 @@ def build_html(conditions, report, graph_path=None, font_path=None):
     )
 
     period = _text(conditions.get("test_period"))
-    fan_cover = _text(conditions.get("fan_cover"))
-    fan_count = _text(conditions.get("fan_count"))
 
     return f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
