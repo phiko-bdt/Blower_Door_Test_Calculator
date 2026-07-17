@@ -44,7 +44,7 @@ COLOR_GRID_MINOR = "#f1f3f6"  # 성적서(matplotlib) 보조 격자
 COLOR_CHART_GRID = "#ccd3dc"       # 주 격자·축선 (표면 대비 1.47:1)
 COLOR_CHART_GRID_SOFT = "#e4e8ee"  # 보조 격자 (표면 대비 1.20:1)
 COLOR_CROSSHAIR = "#94a0ae"   # 기준선 (50 Pa)
-COLOR_CURSOR = "#b6bfc9"      # 현재 위치 십자 포인터 (기준선보다 연하게)
+# (현재 위치 표시는 COLOR_INK 로 그린다 — 연한 색은 격자에 묻혔다)
 
 # ──────────────────────────────────────────────────────────────
 # 포인트 (accent) — 아껴 쓴다
@@ -284,6 +284,33 @@ QPushButton#Secondary {{
 QPushButton#Secondary:hover {{ background-color: {COLOR_ACCENT_SOFT}; }}
 /* 헤더 구석의 종료 버튼 — 전체화면이라 창의 X 가 없어 앱 안에 둔다.
    시험 진행과 무관한 기능이므로 단계 표시보다 물러서 보이게 한다. */
+/* 확인·알림 창 — QMessageBox 대신 앱 토큰으로 그린다 (widgets.Dialog) */
+QDialog {{ background-color: {COLOR_BG}; }}
+QLabel#DialogTitle {{
+    font-size: 20px;
+    font-weight: bold;
+    color: {COLOR_INK};
+}}
+QLabel#DialogBody {{
+    font-size: 15px;
+    color: {COLOR_SUB};
+}}
+/* 되돌릴 수 없는 동작(종료·중단) — 상태색을 쓴다 */
+QPushButton#Danger {{
+    background-color: {COLOR_DANGER};
+}}
+QPushButton#Danger:hover {{ background-color: #9a1e14; }}
+QPushButton#Danger:pressed {{ background-color: #7f1910; }}
+/* 남은 시간 막대 — 그래프가 주인공이므로 얇고 조용하게 */
+QProgressBar#Countdown {{
+    background-color: {COLOR_LINE2};
+    border: none;
+    border-radius: 3px;
+}}
+QProgressBar#Countdown::chunk {{
+    background-color: {COLOR_ACCENT};
+    border-radius: 3px;
+}}
 QPushButton#HeaderQuit {{
     color: {COLOR_SUB};
     background-color: transparent;

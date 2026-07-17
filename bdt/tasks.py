@@ -58,6 +58,9 @@ class BackgroundTask(QThread):
     impossible = pyqtSignal(str)
     # 성적서를 바탕화면 보관함에 남겼다 (사본 경로) → 성적서 화면이 안내한다
     archived = pyqtSignal(str)
+    # (문구, 남은 초, 전체 초) — 대기·측정처럼 끝이 정해진 일의 진행.
+    # 문구만 보내면 숫자가 줄지 않아 멈춘 건지 기다리는 건지 알 수 없었다.
+    countdown = pyqtSignal(str, float, float)
 
     def __init__(self, task_type):
         super().__init__()
@@ -129,19 +132,37 @@ class BackgroundTask(QThread):
             self.report("압력 센서 응답이 돌아왔습니다.")
         return value
 
-    def live_wait(self, duty, seconds):
-        """seconds 동안 대기하면서 현재 압력을 십자 포인터로 실시간 갱신한다."""
+    def report_countdown(self, label, remaining, total):
+        """남은 시간을 알린다 (화면이 진행바로 그린다).
+
+        예전엔 대기·측정에 들어가기 전 "(20초)" 를 한 번 알리고 끝이라, 그
+        숫자가 줄지 않아 작업자는 끝나가는지 멈춘 건지 알 수 없었다. duty 를
+        크게 옮기면 대기가 40초까지 가므로 더 그렇다.
+        """
+        self.countdown.emit(label, max(0.0, remaining), total)
+
+    def live_wait(self, duty, seconds, label=None):
+        """seconds 동안 대기하면서 현재 압력을 십자 포인터로 실시간 갱신한다.
+
+        label 을 주면 남은 시간을 1초마다 갱신해 알린다.
+        """
         deadline = time.time() + seconds
+        next_tick = 0.0
         while time.time() < deadline:
             self._check_cancelled()
             p = self._read_pressure(0.1)
             if p is not None:
                 self.report_position(duty, p)
+            now = time.time()
+            if label and now >= next_tick:
+                self.report_countdown(label, deadline - now, seconds)
+                next_tick = now + 1.0
 
-    def live_measure(self, duty, seconds):
+    def live_measure(self, duty, seconds, label=None):
         """seconds 동안 압력을 읽어 평균과 변동폭을 반환한다.
 
-        그 사이 십자 포인터도 실시간 갱신한다.
+        그 사이 십자 포인터도 실시간 갱신하고, label 을 주면 남은 시간을
+        1초마다 알린다.
         반환: (평균, 표준편차, 최소, 최대). 표본이 없으면 전부 0.
 
         0 기류 보정을 생략하는 운용이라 바람의 영향이 결과에 그대로 들어온다.
@@ -150,12 +171,17 @@ class BackgroundTask(QThread):
         """
         samples = []
         deadline = time.time() + seconds
+        next_tick = 0.0
         while time.time() < deadline:
             self._check_cancelled()
             p = self._read_pressure(0.3)
             if p is not None:
                 samples.append(p)
                 self.report_position(duty, p)
+            now = time.time()
+            if label and now >= next_tick:
+                self.report_countdown(label, deadline - now, seconds)
+                next_tick = now + 1.0
         if not samples:
             # 예전엔 0.0 을 돌려줬다. 센서가 죽어도 시험이 조용히 계속되며
             # 모든 지점이 0 Pa 로 기록됐고, 그 뒤 계산이 log(0) 로 터졌다.
@@ -435,11 +461,14 @@ class BackgroundTask(QThread):
                 hardware.duty_set(d, test=TEST_MODE)
                 # duty 를 많이 움직일수록 압력이 자리 잡는 데 오래 걸린다
                 settle = abs(before - d) * settle_per_duty
-                self.report(f"[{i}/{total}] 팬 세기 {d}% — 압력 안정화 대기 중… ({settle}초)")
-                # 대기·측정 내내 실시간으로 십자 포인터를 갱신한다
-                self.live_wait(d, settle)
-                self.report(f"[{i}/{total}] 팬 세기 {d}% — 압력 측정 중… ({measure_seconds:.0f}초)")
-                p, sigma, p_min, p_max = self.live_measure(d, measure_seconds)
+                # 대기·측정 내내 실시간으로 십자 포인터를 갱신하고, 남은 시간을
+                # 1초마다 알린다 (duty 를 크게 옮기면 대기가 40초까지 간다 —
+                # 숫자가 줄지 않으면 멈춘 건지 기다리는 건지 알 수 없다)
+                self.live_wait(d, settle,
+                               label=f"[{i}/{total}] 팬 세기 {d}% · 압력 안정화 대기")
+                p, sigma, p_min, p_max = self.live_measure(
+                    d, measure_seconds,
+                    label=f"[{i}/{total}] 팬 세기 {d}% · 압력 측정 중")
                 self.report(f"[{i}/{total}] 팬 세기 {d}% — 측정 완료: "
                             f"{p:.1f} Pa (변동 ±{sigma:.1f})")
                 if abs(p) < low_warn:

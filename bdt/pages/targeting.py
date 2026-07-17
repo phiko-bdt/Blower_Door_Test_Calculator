@@ -24,13 +24,13 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QProgressBar,
     QFrame,
-    QMessageBox,
 )
 from PyQt6.QtCore import QPointF, Qt, QMargins, pyqtSignal
 from PyQt6.QtCharts import QChart, QChartView, QLineSeries, QAreaSeries, QValueAxis
 from PyQt6.QtGui import QFont, QColor, QPen, QBrush, QPainter
 
 from bdt import theme
+from bdt.widgets import confirm
 from bdt.scale import nice_step
 
 
@@ -428,12 +428,9 @@ class TargetingPage(QWidget):
 
     def _confirm_cancel(self):
         """실수로 눌러 조절 과정을 날리지 않도록 한 번 되묻는다."""
-        answer = QMessageBox.question(
-            self, "시험 중단",
-            "목표 압력 조절을 중단할까요?\n\n팬은 정지합니다.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        if answer == QMessageBox.StandardButton.Yes:
+        if confirm(self, "시험 중단",
+                   "목표 압력 조절을 중단할까요? 팬은 정지합니다.",
+                   ok_text="시험 중단", cancel_text="계속 조절", danger=True):
             self.cancel_button.setEnabled(False)
             self.cancel_button.setText("중단하는 중…")
             self.cancelled.emit()

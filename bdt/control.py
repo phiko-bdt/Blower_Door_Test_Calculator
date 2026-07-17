@@ -128,14 +128,45 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
         duty_real = duty_transformation(duty, duty_min, duty_max)
         # duty 값 적용
         hardware.duty_set(duty_real, test=False)
-        # 압력 변화를 기다리는 동안(delay) 압력을 짧은 주기로 읽어 실시간 위치를 갱신한다.
-        # (기존엔 delay 만큼 통째로 sleep 해서 그래프가 delay 마다 한 번만 움직였다)
+        # 압력이 자리 잡길 기다리는 동안(delay) 짧은 주기로 읽는다.
+        #
+        # **이 값들로 유지 시간을 센다.** 예전엔 delay 가 끝난 뒤 스냅샷 하나로만
+        # 판정해서, 5초 사이 압력이 밴드를 들락거려도 카운트가 그대로 쌓였다.
+        # 루프 한 바퀴가 5.5초쯤이라 "10초 유지"가 사실은 스냅샷 두 개였다 —
+        # 그 사이 무슨 일이 있었는지는 아무도 안 봤다. 판정 기준(밴드)은 화면에
+        # 그리는 것과 같은 pressure_threshold 다.
         deadline = time.time() + delay
+        last_tick = time.time()
         while time.time() < deadline:
             cancel_check()
             live = abs(hardware.pressure_read(0.1, test=test))
             notify_point(duty_real, live)
-        # 압력 값 측정
+
+            now = time.time()
+            dt = now - last_tick
+            last_tick = now
+            in_band = abs(target - live) < pressure_threshold
+
+            if in_band:
+                convergence_time += dt
+                notify_hold("converge", convergence_time)
+            elif convergence_time:
+                # 밴드를 벗어나는 순간 리셋한다 — '연속으로' 머물러야 수렴이다
+                convergence_time = 0
+                notify_hold("converge", 0)
+
+            # 팬이 한계에 붙은 채 밴드 밖이면 실패를 센다 (같은 시간 기준)
+            if duty in (0, 100) and not in_band:
+                failure_time += dt
+                notify_hold("fail", failure_time)
+            elif failure_time:
+                failure_time = 0
+                notify_hold("fail", 0)
+
+            if convergence_time >= duration or failure_time >= duration:
+                break  # 판정이 섰다 — 남은 대기는 의미가 없다
+
+        # 압력 값 측정 (PID 입력)
         current = abs(hardware.pressure_read(average_time, test=test))
         # duty의 이동 평균 계산
         window.append(duty)
@@ -144,8 +175,6 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
 
         duty_avg = sum(window)/len(window)
 
-        # 제어 종료 시간
-        time_diff = time.time() - time_start
         # 압력 오차
         error_pressure = abs(target - current)
         # duty 오차 # 사용하지 않음
@@ -153,14 +182,12 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
         # 제어 중 측정한 점도 실시간 그래프에 표시한다
         notify_point(duty_real, current)
 
-        if error_pressure < pressure_threshold: # and error_duty < max(2, duty/10):
-            convergence_time += time_diff
-            notify_hold("converge", convergence_time)
+        # 유지 시간은 위 대기 루프가 실시간으로 셌다 — 여기서 또 더하면
+        # 같은 시간을 두 번 세게 된다. 여기서는 상황만 알린다.
+        if error_pressure < pressure_threshold:
             notify(f"팬 세기 {duty_real}% — 압력 {current:.1f} / 목표 {target} Pa "
-                   f"· 안정화 중 ({convergence_time:.0f}/{duration}초)")
+                   f"· 안정화 중 ({convergence_time:.0f}/{duration:.0f}초)")
         else:
-            convergence_time = 0
-            notify_hold("converge", 0)
             notify(f"팬 세기 {duty_real}% — 압력 {current:.1f} / 목표 {target} Pa "
                    f"· 조절 중 (오차 {error_pressure:.1f} Pa)")
 
@@ -172,26 +199,20 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
             return (duty_real, True, current, None)
 
         # duty 가 한계에 붙었는데 수렴 문턱(pressure_threshold)을 넘는 오차가
-        # 남아 있으면 실패로 센다. 예전엔 실패 문턱이 20 Pa 로 따로 있어서
-        # 오차가 7~20 Pa 인 채 duty 100 에 포화되면 수렴도 실패도 아닌
-        # 데드존에 갇혀 영영 반환하지 않았다.
+        # 남아 있으면 실패다. 예전엔 실패 문턱이 20 Pa 로 따로 있어서 오차가
+        # 7~20 Pa 인 채 duty 100 에 포화되면 수렴도 실패도 아닌 데드존에 갇혀
+        # 영영 반환하지 않았다. (카운트도 위 대기 루프가 실시간으로 센다)
         if duty == 100 and error_pressure >= pressure_threshold:
             notify(f"팬을 최대로 돌려도 목표 {target} Pa에 못 미칩니다 "
-                   f"(현재 {current:.1f} Pa) — 누기량이 많거나 개구부가 열려 있는지 확인하세요")
-            failure_time += time_diff
-            notify_hold("fail", failure_time)
+                   f"(현재 {current:.1f} Pa) — 누기량이 많거나 개구부가 열려 있는지 "
+                   f"확인하세요 ({failure_time:.0f}/{duration:.0f}초)")
         elif duty == 0 and error_pressure >= pressure_threshold:
             # PID duty 0 은 팬 정지가 아니라 duty_min(팬이 도는 최소 세기)이다.
             # 예전엔 '팬을 멈춰도'라고 알려서, 실제로는 팬이 최소로 돌고 있는데
             # 작업자가 센서·외풍 문제로 오진하게 만들었다.
             notify(f"팬을 최소({duty_min}%)로 낮춰도 압력이 목표 {target} Pa를 "
                    f"넘습니다 (현재 {current:.1f} Pa) — 외풍이나 센서 상태를 "
-                   "확인하세요")
-            failure_time += time_diff
-            notify_hold("fail", failure_time)
-        else:
-            failure_time = 0
-            notify_hold("fail", 0)
+                   f"확인하세요 ({failure_time:.0f}/{duration:.0f}초)")
 
         if failure_time >= duration:
             current = abs(hardware.pressure_read(final_measure_time, test=test))

@@ -23,10 +23,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
-from PyQt6.QtWidgets import QApplication, QMessageBox  # noqa: E402
+from PyQt6.QtWidgets import QApplication  # noqa: E402
 from PyQt6.QtCore import QTimer  # noqa: E402
 
-from bdt import hardware, control, paths, settings, tasks  # noqa: E402
+from bdt import hardware, control, paths, settings, tasks, widgets  # noqa: E402
 
 DATA_FILES = ("conditions.json", "depressurization_raw.json",
               "pressurization_raw.json", "calculation_raw.json",
@@ -311,11 +311,10 @@ def main():
 
         # 팬 계수 저장이 검증에 걸려도 측정 기준값이 절반 저장되면 안 된다
         # (사고: "저장 실패"라고 알리면서 목표 압력만 조용히 바뀜)
-        # 경고창은 모달이라 여기서 막으면 스모크가 영영 멈춘다
+        # 알림창은 모달이라 여기서 열리면 스모크가 영영 멈춘다
         dialogs = []
-        QMessageBox.warning = staticmethod(
-            lambda *a, **k: dialogs.append(a[2] if len(a) > 2 else ""))
-        QMessageBox.information = staticmethod(lambda *a, **k: None)
+        import bdt.pages.settings_page as _sp
+        _sp.alert = lambda parent, title, text: dialogs.append(title)
         sp.fields["target_pressure"].setText("45")
         sp.fan_fields[("duty_range", "duty_min")].setText("100")
         sp.fan_fields[("duty_range", "duty_max")].setText("20")
@@ -380,8 +379,9 @@ def main():
         # ── 5. 종료 시 워커 정리 ────────────────────────────────
         print("5. 창 닫기 정리")
         control.get_duty = slow_get_duty
-        QMessageBox.question = staticmethod(
-            lambda *a, **k: QMessageBox.StandardButton.Yes)
+        # 창 닫기 확인은 앱 다이얼로그를 쓴다 — 승인한 것으로 스텁한다
+        import bdt.flow as _flow
+        _flow.confirm = lambda *a, **k: True
         w3 = MainWindow(); w3.resize(1180, 720); w3.show()
         flow3 = TestFlow(w3); w3.flow = flow3
         flow3.data = cond; flow3.time_start = "x"; flow3.fan_count = 1

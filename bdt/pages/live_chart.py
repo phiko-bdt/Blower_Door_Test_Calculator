@@ -6,8 +6,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QPushButton,
+    QProgressBar,
     QFrame,
-    QMessageBox,
 )
 from PyQt6.QtCore import QPointF, Qt, pyqtSignal
 from PyQt6.QtCharts import (
@@ -21,6 +21,7 @@ from PyQt6.QtCharts import (
 from PyQt6.QtGui import QFont, QColor, QPen, QBrush, QPainter
 
 from bdt import theme
+from bdt.widgets import confirm
 from bdt.scale import padded_range
 
 
@@ -59,7 +60,9 @@ class LiveMeasurementChart(QWidget):
     C_GRID_MAJOR = theme.COLOR_CHART_GRID       # 주 격자·축선 (화면용)
     C_GRID_MINOR = theme.COLOR_CHART_GRID_SOFT  # 보조 격자 (화면용)
     C_CROSSHAIR = theme.COLOR_CROSSHAIR    # 50 Pa 기준선 (성적서와 같은 색)
-    C_CURSOR = theme.COLOR_CURSOR          # 현재 위치 십자 포인터
+    # 현재 위치 원 — 데이터(파랑·주황)와 섞이지 않으면서 가장 진한 색.
+    # 연한 회색(COLOR_CURSOR)으로 뒀더니 격자에 묻혀 안 보였다.
+    C_CURSOR = theme.COLOR_INK             # 현재 위치 원
 
     # 시험의 기준 압력. 성적서 그래프처럼 항상 보이게 축에 포함시킨다.
     PRESSURE_REF = 50.0
@@ -85,7 +88,7 @@ class LiveMeasurementChart(QWidget):
         self.flow_min = self.FLOW_MIN_PER_FAN * num_fans
         self.flow_max = self.FLOW_MAX_PER_FAN * num_fans
         self.x_lo, self.x_hi = self.PRESSURE_MIN, self.PRESSURE_MAX
-        self._cursor = None  # 십자 포인터 위치 (압력, 풍량)
+        self._cursor = None  # 현재 위치 원의 자리 (압력, 풍량)
 
         self.label = QLabel(initial_message)
         self.label.setObjectName("Message")
@@ -94,10 +97,21 @@ class LiveMeasurementChart(QWidget):
         self.progress.setObjectName("Hint")
         self.progress.setWordWrap(True)
 
+        # 끝이 정해진 일(안정화 대기·측정)의 남은 시간. 문구만으론 숫자가
+        # 줄지 않아 멈춘 건지 기다리는 건지 알 수 없었다.
+        self.countdown_bar = QProgressBar()
+        self.countdown_bar.setObjectName("Countdown")
+        self.countdown_bar.setTextVisible(False)
+        self.countdown_bar.setFixedHeight(6)
+        self.countdown_bar.setMaximumWidth(360)
+        self.countdown_bar.setRange(0, 1000)
+        self.countdown_bar.setVisible(False)
+
         head = QVBoxLayout()
         head.setSpacing(6)
         head.addWidget(self.label)
         head.addWidget(self.progress)
+        head.addWidget(self.countdown_bar)
 
         # 시험 중단 — 몇 분씩 걸리는 측정을 화면에서 멈출 수단이 없으면
         # 잘못된 걸 알아채도 앱을 강제 종료하는 수밖에 없다.
@@ -185,23 +199,23 @@ class LiveMeasurementChart(QWidget):
         self.ref_line.attachAxis(self.axis_x)
         self.ref_line.attachAxis(self.axis_y)
 
-        # 현재 측정 위치를 나타내는 십자 포인터 (수평선 + 수직선).
-        # 50 Pa 기준선 바로 옆에 놓이는 일이 잦으므로(측정이 50 Pa 를 겨냥한다)
-        # 점선·연한 색으로 확실히 구분되게 한다. 기준선은 파선·진한 색이다.
-        self.crosshair = {}
-        for key in ("h", "v"):
-            line = QLineSeries()
-            line.setName("현재 위치" if key == "h" else "")
-            pen = QPen(QColor(self.C_CURSOR))
-            pen.setWidthF(1.2)
-            pen.setStyle(Qt.PenStyle.DotLine)
-            line.setPen(pen)
-            self.chart.addSeries(line)
-            line.attachAxis(self.axis_x)
-            line.attachAxis(self.axis_y)
-            self.crosshair[key] = line
-        # 수직선은 범례에 중복 표시되지 않도록 숨긴다
-        self.chart.legend().markers(self.crosshair["v"])[0].setVisible(False)
+        # 현재 측정 위치 — 빈 동그라미.
+        #
+        # 예전엔 가로·세로 점선 십자였다. 점선 두 줄이 격자·기준선과 섞여
+        # 정작 현재 위치가 어디인지 눈에 안 들어왔다 (실기기에서 확인). 빈
+        # 원은 한 점을 가리키면서 속이 비어 있어 아래 측정 마커를 가리지 않는다.
+        self.cursor = QScatterSeries()
+        self.cursor.setName("현재 위치")
+        self.cursor.setMarkerShape(
+            QScatterSeries.MarkerShape.MarkerShapeCircle)
+        self.cursor.setMarkerSize(16)
+        self.cursor.setBrush(QBrush(Qt.BrushStyle.NoBrush))  # 속이 빈 원
+        cursor_pen = QPen(QColor(self.C_CURSOR))
+        cursor_pen.setWidthF(2.0)
+        self.cursor.setPen(cursor_pen)
+        self.chart.addSeries(self.cursor)
+        self.cursor.attachAxis(self.axis_x)
+        self.cursor.attachAxis(self.axis_y)
 
         # 변동폭 가로선의 범례 항목.
         # 막대는 지점마다 별도 시리즈로 그려야 해서(QLineSeries 는 NaN 으로
@@ -264,13 +278,10 @@ class LiveMeasurementChart(QWidget):
 
     def _confirm_cancel(self):
         """실수로 눌러 몇 분치 측정을 날리지 않도록 한 번 되묻는다."""
-        answer = QMessageBox.question(
-            self, "시험 중단",
-            "진행 중인 측정을 중단할까요?\n\n"
-            "지금까지 측정한 값은 저장되지 않고, 팬은 정지합니다.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        if answer == QMessageBox.StandardButton.Yes:
+        if confirm(self, "시험 중단",
+                   "진행 중인 측정을 중단할까요? 지금까지 측정한 값은 "
+                   "저장되지 않고, 팬은 정지합니다.",
+                   ok_text="시험 중단", cancel_text="계속 측정", danger=True):
             self.cancel_button.setEnabled(False)
             self.cancel_button.setText("중단하는 중…")
             self.cancelled.emit()
@@ -278,6 +289,16 @@ class LiveMeasurementChart(QWidget):
     def set_progress(self, text):
         """작업 스레드가 보내온 진행 상황을 표시한다."""
         self.progress.setText(text)
+        # 카운트다운이 아닌 일반 문구가 오면 막대를 치운다 (남은 시간이
+        # 없는 상태에서 멈춘 막대가 남아 있으면 그게 더 헷갈린다)
+        self.countdown_bar.setVisible(False)
+
+    def set_countdown(self, label, remaining, total):
+        """끝이 정해진 일의 남은 시간을 문구 + 막대로 보여준다."""
+        self.progress.setText(f"{label} — {remaining:.0f}초 남음")
+        done = (total - remaining) / total if total > 0 else 1.0
+        self.countdown_bar.setValue(int(min(max(done, 0.0), 1.0) * 1000))
+        self.countdown_bar.setVisible(True)
 
     def rescale(self):
         """측정점에 맞춰 두 축 범위를 다시 잡는다.
@@ -322,19 +343,17 @@ class LiveMeasurementChart(QWidget):
         self._redraw_crosshair()
 
     def _redraw_crosshair(self):
-        """십자 포인터를 현재 축 범위에 맞춰 다시 그린다."""
+        """현재 위치 원을 다시 찍는다 (축 범위가 바뀌면 클램프도 다시 한다)."""
         if self._cursor is None:
             return
         pressure, flow = self._cursor
-        self.crosshair["h"].replace([QPointF(self.x_lo, flow),
-                                     QPointF(self.x_hi, flow)])
-        self.crosshair["v"].replace([QPointF(pressure, self.flow_min),
-                                     QPointF(pressure, self.flow_max)])
+        self.cursor.replace([QPointF(pressure, flow)])
 
     def move_crosshair(self, flow, pressure):
-        """현재 측정 위치를 십자 포인터로 표시한다 (마커는 찍지 않는다).
+        """현재 측정 위치를 빈 원으로 표시한다 (측정 마커는 찍지 않는다).
 
-        축이 x=압력차, y=풍량이므로 수직선은 압력, 수평선은 풍량에 맞춘다.
+        축이 x=압력차, y=풍량이다. 축 밖으로 나가면 원이 사라져 위치를 잃으므로
+        범위 안으로 붙여 둔다.
         """
         flow = min(max(flow, self.flow_min), self.flow_max)
         pressure = min(max(abs(pressure), self.x_lo), self.x_hi)

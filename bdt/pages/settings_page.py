@@ -24,13 +24,12 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QGridLayout,
     QFrame,
-    QMessageBox,
     QScrollArea,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from bdt import settings
-from bdt.widgets import PageHeader, SectionTitle
+from bdt.widgets import PageHeader, SectionTitle, confirm, alert
 
 
 class SettingsPage(QWidget):
@@ -220,13 +219,10 @@ class SettingsPage(QWidget):
 
     def _reset_defaults(self):
         """측정 기준값만 되돌린다 — 팬 계수는 장비 고유값이라 건드리지 않는다."""
-        answer = QMessageBox.question(
-            self, "기본값 복원",
-            "측정 기준값을 기본값으로 되돌릴까요?\n\n"
-            "팬 보정식은 장비마다 다른 값이라 그대로 둡니다.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        if answer != QMessageBox.StandardButton.Yes:
+        if not confirm(self, "기본값 복원",
+                       "측정 기준값을 기본값으로 되돌릴까요? "
+                       "팬 보정식은 장비마다 다른 값이라 그대로 둡니다.",
+                       ok_text="되돌리기", cancel_text="취소"):
             return
         for key, edit in self.fields.items():
             edit.setText(self._fmt(settings.DEFAULTS[key]))
@@ -235,15 +231,14 @@ class SettingsPage(QWidget):
         """숫자 하나를 읽는다. 비었거나 숫자가 아니면 알리고 None."""
         text = edit.text().strip().replace(",", "")
         if not text:
-            QMessageBox.warning(self, "입력 오류", f"‘{label}’ 값을 넣어 주세요.")
+            alert(self, "입력 오류", f"‘{label}’ 값을 넣어 주세요.")
             edit.setFocus()
             return None
         try:
             return float(text)
         except ValueError:
-            QMessageBox.warning(
-                self, "입력 오류",
-                f"‘{label}’ 에는 숫자만 넣을 수 있습니다.\n입력한 값: {text}")
+            alert(self, "입력 오류",
+                  f"‘{label}’ 에는 숫자만 넣을 수 있습니다.\n입력한 값: {text}")
             edit.setFocus()
             edit.selectAll()
             return None
@@ -256,10 +251,9 @@ class SettingsPage(QWidget):
                 return
             lo, hi = settings.LIMITS[key]
             if not (lo <= value <= hi):
-                QMessageBox.warning(
-                    self, "입력 오류",
-                    f"‘{name}’ 은 {self._fmt(lo)} ~ {self._fmt(hi)} {unit} "
-                    f"범위여야 합니다.\n입력한 값: {self._fmt(value)}")
+                alert(self, "입력 오류",
+                      f"‘{name}’ 은 {self._fmt(lo)} ~ {self._fmt(hi)} {unit} "
+                      f"범위여야 합니다.\n입력한 값: {self._fmt(value)}")
                 self.fields[key].setFocus()
                 self.fields[key].selectAll()
                 return
@@ -291,19 +285,18 @@ class SettingsPage(QWidget):
             settings.validate(values)
             settings.validate_fan_coefficients(fan)
         except ValueError as exc:
-            QMessageBox.warning(self, "입력 오류", str(exc))
+            alert(self, "입력 오류", str(exc))
             return
         try:
             settings.save(values)
             settings.save_fan_coefficients(fan)
         except (ValueError, OSError, json.JSONDecodeError) as exc:
-            QMessageBox.warning(self, "저장 실패", str(exc))
+            alert(self, "저장 실패", str(exc))
             return
 
         tolerance = settings.tolerance_pa(values)
-        QMessageBox.information(
-            self, "저장 완료",
-            f"설정을 저장했습니다.\n\n"
-            f"목표 압력 {values['target_pressure']:g} Pa "
-            f"(허용 오차 ±{tolerance:.1f} Pa)로 다음 시험을 진행합니다.")
+        alert(self, "저장 완료",
+              f"설정을 저장했습니다.\n\n"
+              f"목표 압력 {values['target_pressure']:g} Pa "
+              f"(허용 오차 ±{tolerance:.1f} Pa)로 다음 시험을 진행합니다.")
         self.closed.emit()

@@ -4,11 +4,11 @@ import json
 from datetime import datetime
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QMainWindow,
-                             QStackedWidget, QMessageBox)
+                             QStackedWidget)
 from PyQt6.QtCore import QObject
 
 from bdt import paths
-from bdt.widgets import StepHeader
+from bdt.widgets import StepHeader, confirm
 from bdt.pages import (
     InputInitialValues,
     LivePressureData,
@@ -57,11 +57,8 @@ class MainWindow(QMainWindow):
         화면 구석에 늘 떠 있으므로, 지나가다 스친 터치로 앱이 꺼지지 않게
         여기서 한 번 더 묻는다.
         """
-        answer = QMessageBox.question(
-            self, "앱 종료", "기밀성능 시험 앱을 종료할까요?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        if answer == QMessageBox.StandardButton.Yes:
+        if confirm(self, "앱 종료", "기밀성능 시험 앱을 종료할까요?",
+                   ok_text="종료", cancel_text="취소", danger=True):
             self.close()  # 진행 중 작업 정리는 closeEvent 가 맡는다
 
     def closeEvent(self, event):
@@ -83,11 +80,8 @@ class MainWindow(QMainWindow):
             else:
                 text = ("계산·성적서 작업이 진행 중입니다. 앱을 종료할까요?\n\n"
                         "이번 시험의 성적서가 만들어지지 않을 수 있습니다.")
-            answer = QMessageBox.question(
-                self, "작업 진행 중", text,
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No)
-            if answer != QMessageBox.StandardButton.Yes:
+            if not confirm(self, "작업 진행 중", text, ok_text="종료",
+                           cancel_text="계속 진행", danger=True):
                 event.ignore()
                 return
             task.cancel()
@@ -294,6 +288,7 @@ class TestFlow(QObject):
         page = LiveMeasurementChart(f"{label} 시험 측정 중…", num_fans=self.fan_count)
         self.window.show_page(page, step=self.steps.index(label))
         task.progress.connect(page.set_progress)
+        task.countdown.connect(page.set_countdown)
         task.point.connect(page.add_point)
         task.position.connect(page.move_crosshair)
         page.cancelled.connect(task.cancel)

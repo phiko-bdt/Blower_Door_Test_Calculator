@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QGridLayout,
     QCheckBox,
-    QMessageBox,
     QComboBox,
     QFrame,
     QScrollArea,
@@ -22,7 +21,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 
 from bdt import paths
 from bdt.theme import COLOR_ACCENT
-from bdt.widgets import PageHeader, SectionTitle
+from bdt.widgets import PageHeader, SectionTitle, alert
 
 
 class InputInitialValues(QWidget):
@@ -196,8 +195,7 @@ class InputInitialValues(QWidget):
         text = field.text().strip()
         if not text:
             if required:
-                QMessageBox.warning(self, "입력 오류",
-                                    f"‘{label}’ 항목은 필수 입력입니다.")
+                alert(self, "입력 오류", f"‘{label}’ 항목은 필수 입력입니다.")
                 field.setFocus()
                 return None
             return ""
@@ -206,16 +204,14 @@ class InputInitialValues(QWidget):
         try:
             value = float(text.replace(",", ""))
         except ValueError:
-            QMessageBox.warning(
-                self, "입력 오류",
-                f"‘{label}’ 항목에는 숫자만 넣을 수 있습니다.\n"
-                f"입력한 값: {text}\n\n단위나 글자를 빼고 숫자만 적어 주세요.")
+            alert(self, "입력 오류",
+                  f"‘{label}’ 항목에는 숫자만 넣을 수 있습니다.\n"
+                  f"입력한 값: {text}\n\n단위나 글자를 빼고 숫자만 적어 주세요.")
             field.setFocus()
             field.selectAll()
             return None
         if value <= 0:
-            QMessageBox.warning(self, "입력 오류",
-                                f"‘{label}’ 항목은 0보다 커야 합니다.")
+            alert(self, "입력 오류", f"‘{label}’ 항목은 0보다 커야 합니다.")
             field.setFocus()
             field.selectAll()
             return None
@@ -237,7 +233,8 @@ class InputInitialValues(QWidget):
         # 감압 또는 가압 중 적어도 하나가 선택되었는지 확인
         is_checked = self.checkbox_states.get("depressurization", False) or self.checkbox_states.get("pressurization", False)
         if not is_checked:
-            QMessageBox.warning(self, "선택 오류", "감압 시험과 가압 시험 중 하나 이상을 선택해야 합니다.")
+            alert(self, "선택 오류",
+                  "감압 시험과 가압 시험 중 하나 이상을 선택해야 합니다.")
             return
 
         data = {}

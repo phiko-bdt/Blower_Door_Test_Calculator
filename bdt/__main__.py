@@ -10,11 +10,12 @@ import atexit
 import fcntl
 import traceback
 
-from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QFont, QFontDatabase
 
 from bdt import hardware
 from bdt import paths
+from bdt.widgets import alert
 from bdt.config import TEST_MODE
 from bdt.theme import APP_STYLE, WIN_W, WIN_H
 from bdt.flow import MainWindow, TestFlow
@@ -58,10 +59,9 @@ def main():
     # 하드웨어를 건드리기 전에 중복 실행부터 확인한다. 두 번째 인스턴스가
     # duty 0 을 걸면 첫 인스턴스의 측정이 망가진다.
     if _another_instance_running():
-        QMessageBox.warning(
-            None, "이미 실행 중",
-            "기밀성능 시험 앱이 이미 실행되고 있습니다.\n"
-            "열려 있는 창을 사용하세요.")
+        alert(None, "이미 실행 중",
+              "기밀성능 시험 앱이 이미 실행되고 있습니다.\n"
+              "열려 있는 창을 사용하세요.")
         sys.exit(0)
 
     # Ensure the fan PWM duty is zero on startup so that the fan does not run
@@ -114,8 +114,8 @@ def main():
             detail = (f"PWM 핀 GPIO{hardware.PWM_GPIO} 손상이 의심됩니다.\n"
                       "팬이 계속 회전할 수 있으니 전원을 수동으로 차단하고,\n"
                       "PWM 배선과 핀 상태를 점검한 뒤 시험을 진행하세요.")
-        QMessageBox.warning(window, "팬 정지 실패",
-                            f"팬을 정지시키지 못했습니다.\n\n{detail}")
+        alert(window, "팬 정지 실패",
+              f"팬을 정지시키지 못했습니다.\n\n{detail}")
 
     # 시험 절차 시작 (이후 진행은 시그널을 따라 페이지만 바뀐다)
     flow = TestFlow(window)

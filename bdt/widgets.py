@@ -7,10 +7,85 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QVBoxLayout,
     QPushButton,
+    QDialog,
 )
 from PyQt6.QtCore import Qt
 
 from bdt.theme import STANDARD_NAME, STANDARD_NOTE
+
+
+class Dialog(QDialog):
+    """앱 디자인을 쓰는 확인·알림 창.
+
+    QMessageBox 는 말풍선 아이콘에 영문 Yes/No 버튼이라 앱과 따로 놀았다
+    (현장에서 '옛날 프로그램 같다'는 지적을 받았다). 아이콘을 없애고 제목·본문·
+    버튼을 앱의 다른 화면과 같은 토큰으로 그린다. 버튼 문구도 '예/아니오'가
+    아니라 실제 동작('종료'·'중단')을 쓴다 — 무엇에 동의하는지가 분명해진다.
+
+    쓰는 쪽은 confirm()·alert() 를 부른다.
+    """
+
+    def __init__(self, parent, title, text, ok_text=None, cancel_text=None,
+                 danger=False):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setModal(True)
+        # 창틀을 없앤다. 남겨두면 전체화면 앱 위에 회색 제목표시줄과 최소화·
+        # 닫기 버튼이 뜨고, 제목이 표시줄과 본문에 두 번 나온다. 터치스크린
+        # 확인창은 옮길 일도 없다.
+        self.setWindowFlags(Qt.WindowType.Dialog
+                            | Qt.WindowType.FramelessWindowHint)
+
+        heading = QLabel(title)
+        heading.setObjectName("DialogTitle")
+        body = QLabel(text)
+        body.setObjectName("DialogBody")
+        body.setWordWrap(True)
+
+        buttons = QHBoxLayout()
+        buttons.setSpacing(10)
+        buttons.addStretch(1)
+        if cancel_text:
+            cancel = QPushButton(cancel_text)
+            cancel.setObjectName("Secondary")
+            cancel.setMinimumWidth(120)
+            cancel.clicked.connect(self.reject)
+            buttons.addWidget(cancel)
+        ok = QPushButton(ok_text or "확인")
+        ok.setObjectName("Danger" if danger else "")
+        ok.setMinimumWidth(120)
+        ok.clicked.connect(self.accept)
+        # 되돌릴 수 없는 동작은 기본 버튼으로 두지 않는다 — 터치스크린에서
+        # 엔터가 아니라 손가락으로 누르지만, 실수 방지의 기본은 지킨다.
+        ok.setDefault(not danger)
+        buttons.addWidget(ok)
+
+        card = QFrame()
+        card.setObjectName("Card")
+        inner = QVBoxLayout(card)
+        inner.setContentsMargins(32, 26, 32, 24)
+        inner.setSpacing(12)
+        inner.addWidget(heading)
+        inner.addWidget(body)
+        inner.addSpacing(6)
+        inner.addLayout(buttons)
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(card)
+        self.setMinimumWidth(420)
+
+
+def confirm(parent, title, text, ok_text="확인", cancel_text="취소",
+            danger=False):
+    """예/아니오를 묻는다. 승인하면 True."""
+    dialog = Dialog(parent, title, text, ok_text, cancel_text, danger)
+    return dialog.exec() == QDialog.DialogCode.Accepted
+
+
+def alert(parent, title, text):
+    """알리기만 한다 (확인 버튼 하나)."""
+    Dialog(parent, title, text, ok_text="확인").exec()
 
 
 def _apply_state(widget, state):
