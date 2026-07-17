@@ -146,23 +146,31 @@ class SettingsPage(QWidget):
         note.setObjectName("Hint")
         outer.addWidget(note)
 
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(20)
-        grid.setVerticalSpacing(10)
-        grid.setColumnStretch(5, 1)
-        grid.addWidget(self._column_title("기울기 (㎥/h·%)"), 0, 1)
-        grid.addWidget(self._column_title("절편 (㎥/h)"), 0, 3)
-
-        for row, (side, label_text) in enumerate(settings.FAN_SIDES, start=1):
-            label = QLabel(f"{label_text} 시험")
-            label.setObjectName("FieldLabel")
-            grid.addWidget(label, row, 0)
-            for col, key in ((1, "slope"), (3, "intercept")):
+        # 감압·가압을 위아래가 아니라 좌우로 놓는다. 방향은 둘뿐이고 각 줄이
+        # 짧아 가로가 남는데, 세로로 쌓으면 열 제목 행까지 필요해져 카드가
+        # 그만큼 길어진다 (설정 전체가 한 화면에 안 들어왔다).
+        sides_row = QHBoxLayout()
+        # 그룹 사이는 그룹 안보다 확실히 넓어야 '감압 4칸 / 가압 4칸'으로 읽힌다
+        sides_row.setSpacing(56)
+        for side, label_text in settings.FAN_SIDES:
+            group = QHBoxLayout()
+            group.setSpacing(8)
+            name = QLabel(f"{label_text} 시험")
+            name.setObjectName("FieldLabel")
+            group.addWidget(name)
+            for key, key_name in (("slope", "기울기"), ("intercept", "절편")):
+                title = QLabel(key_name)
+                title.setObjectName("StatName")
                 edit = QLineEdit()
-                edit.setMaximumWidth(140)
+                edit.setFixedWidth(110)
+                edit.setToolTip(
+                    "㎥/h·%" if key == "slope" else "㎥/h")
                 self.fan_fields[(side, key)] = edit
-                grid.addWidget(edit, row, col)
-        outer.addLayout(grid)
+                group.addWidget(title)
+                group.addWidget(edit)
+            sides_row.addLayout(group)
+        sides_row.addStretch(1)
+        outer.addLayout(sides_row)
 
         # duty 사용 구간 — 보정식이 유효한 범위이자 PID 가 쓰는 팬 세기 구간
         duty_row = QHBoxLayout()
