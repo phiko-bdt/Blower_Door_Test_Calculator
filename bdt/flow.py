@@ -18,6 +18,7 @@ from bdt.pages import (
     TargetingPage,
     CalculationSummary,
     SettingsPage,
+    ReportPage,
 )
 from bdt import settings
 from bdt.tasks import BackgroundTask
@@ -121,6 +122,9 @@ class TestFlow(QObject):
         self.summary = None   # 계산 결과 화면 (그래프·성적서 동안 유지된다)
         self.data = {}
         self.steps = []
+        # 성적서 사본을 남긴 자리 (reporting 작업이 알려준다) — 성적서 화면이
+        # 작업자에게 어디서 찾는지 안내하는 데 쓴다
+        self.archived_path = None
         self.pending = []
         # 작업이 실패·중단됐음을 표시. finished 시그널은 성공 여부와 무관하게
         # 항상 오므로, 이 표시를 보고 다음 단계로 넘어갈지 판단한다.
@@ -322,13 +326,20 @@ class TestFlow(QObject):
     def run_report(self):
         # 같은 결과 화면을 유지한 채 단계 표시만 '성적서' 로 옮긴다
         self.window.header.set_current(self.steps.index("성적서"))
-        self.run_background("reporting", "성적서를 만드는 중…", self.done)
+        self.archived_path = None
+        self.run_background("reporting", "성적서를 만드는 중…", self.done,
+                            on_archived=self._remember_archive)
 
-    def run_background(self, kind, status, on_done):
+    def _remember_archive(self, path):
+        self.archived_path = path
+
+    def run_background(self, kind, status, on_done, on_archived=None):
         """결과 화면을 그대로 둔 채 백그라운드 작업만 실행한다."""
         self.summary.set_progress(status)
         task = BackgroundTask(kind)
         task.progress.connect(self.summary.set_progress)
+        if on_archived:
+            task.archived.connect(on_archived)
         self._connect(task, on_done)
         task.start()
 
@@ -342,9 +353,13 @@ class TestFlow(QObject):
         task.start()
 
     def done(self):
-        # 결과 화면을 그대로 두고 끝났음만 알린다. 성적서 PDF 가 위에 떠서
-        # 화면을 가리므로, 닫으면 결과가 그대로 남아 있는 편이 낫다.
-        self.summary.set_progress("시험 완료 — 성적서(report.pdf)가 화면에 표시됩니다.")
-        self.summary.set_done()
-        # 다음 세대 시험을 앱 재시작 없이 시작할 수 있게 한다
-        self.summary.restart_button.clicked.connect(self.start)
+        """성적서를 앱 안에서 보여준다 — 시험의 마지막 화면.
+
+        예전엔 계산 결과 화면을 그대로 두고 외부 뷰어(evince)가 그 위에
+        성적서를 띄웠다. 전체화면 단말에서 남의 창이 위를 덮고, 작업자가
+        그걸 닫아야 앱으로 돌아왔다. 이제 성적서까지 앱 안에 둔다
+        (PDF 파일은 예전과 같은 자리에 그대로 저장된다).
+        """
+        page = ReportPage(archive_path=self.archived_path)
+        page.restart.connect(self.start)  # 앱 재시작 없이 다음 시험으로
+        self.window.show_page(page, step=self.steps.index("성적서"))

@@ -56,6 +56,8 @@ class BackgroundTask(QThread):
     # 이 조건에서는 시험 자체가 불가능하다 (장비 고장이 아니라 현장 조건 문제).
     # error 와 섞으면 "장비에 문제가 있나" 로 읽히므로 따로 알린다.
     impossible = pyqtSignal(str)
+    # 성적서를 바탕화면 보관함에 남겼다 (사본 경로) → 성적서 화면이 안내한다
+    archived = pyqtSignal(str)
 
     def __init__(self, task_type):
         super().__init__()
@@ -638,20 +640,70 @@ class BackgroundTask(QThread):
                 "성적서 PDF 를 만들지 못했습니다. chromium 이 설치돼 있는지 "
                 "확인하세요.")
         self.report("성적서 생성 완료: report.pdf")
-        if platform.system() == "Linux":
-            self.open_pdf(pdf_path)
+        self.archive_report(pdf_path, conditions)
+        self.render_report_image(pdf_path)
 
-    def open_pdf(self, pdf_path):
-        """생성된 PDF를 뷰어로 연다. 뷰어가 없어도 조용히 넘어간다."""
+    def archive_report(self, pdf_path, conditions):
+        """발행한 성적서를 바탕화면 보관함에 사본으로 남긴다.
+
+        report.pdf 는 시험마다 덮어써진다 — 다음 시험을 시작하는 순간 지난
+        성적서는 사라졌다. 파일명에 시각·시험 종류·체적을 담아 나중에 열지
+        않고도 어느 현장 것인지 알아볼 수 있게 한다.
+
+        보관에 실패해도 시험을 실패로 만들지 않는다 (성적서는 이미 만들어졌다).
+        다만 조용히 넘어가면 작업자는 사본이 있다고 믿으므로 반드시 알린다.
+        """
+        tests = "+".join(
+            label for key, label in (("depressurization", "감압"),
+                                     ("pressurization", "가압"))
+            if conditions.get(key)) or "시험"
+        volume = conditions.get("interior volume", "")
+        dest = paths.report_archive_path(datetime.now(), tests, volume)
+
+        # 같은 분에 두 번 발행하면 이름이 겹친다 — 덮어쓰면 앞의 성적서가
+        # 사라지므로 뒤에 번호를 붙인다.
+        stem, ext = os.path.splitext(dest)
+        n = 2
+        while os.path.exists(dest):
+            dest = f"{stem}({n}){ext}"
+            n += 1
+        try:
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            shutil.copy2(pdf_path, dest)
+        except OSError as exc:
+            self.report(f"⚠ 성적서를 바탕화면에 보관하지 못했습니다 ({exc}) — "
+                        "report.pdf 는 저장됐습니다")
+            return None
+        shown = os.path.relpath(dest, paths.DESKTOP_DIR)
+        self.report(f"성적서를 바탕화면에 보관했습니다: {shown}")
+        self.archived.emit(dest)
+        return dest
+
+    def render_report_image(self, pdf_path):
+        """성적서를 화면에 띄울 이미지로 렌더한다 (pdftoppm, 약 1초).
+
+        예전엔 외부 뷰어(evince)를 띄웠다. 앱이 전체화면인 현장 단말에서 남의
+        창이 위를 덮고, 작업자가 그걸 닫아야 앱으로 돌아올 수 있었다. 이제
+        ReportPage 가 앱 안에서 보여준다.
+
+        여기(백그라운드)서 미리 렌더해 둔다 — 화면 전환 시점에 하면 1초쯤
+        UI 가 멈춘다. 렌더에 실패해도 PDF 는 이미 저장됐으므로 시험을 실패로
+        만들지 않는다. 화면에서만 못 보여준다는 것을 ReportPage 가 알린다.
+        """
         import subprocess as sub
-        viewer = (shutil.which("evince") or shutil.which("xpdf")
-                  or shutil.which("qpdfview") or shutil.which("xdg-open"))
-        if not viewer:
-            self.report("PDF 뷰어가 없어 파일만 저장했습니다: report.pdf")
+        pdftoppm = shutil.which("pdftoppm")
+        if not pdftoppm:
+            self.report("⚠ pdftoppm 이 없어 성적서를 화면에 띄울 수 없습니다 "
+                        "(PDF 파일은 저장됨)")
             return
-        self.report("성적서를 화면에 표시합니다: report.pdf")
-        # start_new_session=True 로 새 세션에 분리해야 시험 종료 후 프로그램이
-        # 닫힐 때(터미널 SIGHUP) 뷰어까지 같이 꺼지지 않는다.
-        sub.Popen([viewer, pdf_path],
-                  stdout=sub.DEVNULL, stderr=sub.DEVNULL,
-                  start_new_session=True)
+        # -singlefile: 이름 뒤에 페이지 번호를 붙이지 않는다 (성적서는 1페이지)
+        stem = os.path.splitext(paths.REPORT_PNG)[0]
+        try:
+            sub.run([pdftoppm, "-png", "-r", "300", "-singlefile",
+                     pdf_path, stem],
+                    check=True, timeout=60,
+                    stdout=sub.DEVNULL, stderr=sub.DEVNULL)
+        except (sub.SubprocessError, OSError) as exc:
+            self.report(f"⚠ 성적서 화면 표시용 렌더 실패 ({exc}) — "
+                        "PDF 파일은 저장됐습니다")
+

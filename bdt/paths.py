@@ -23,8 +23,38 @@ CALCULATION_RAW_JSON = os.path.join(ROOT, "calculation_raw.json")
 # ── 최신 산출물(루트에 덮어쓰기) ─────────────────────────
 GRAPH_PNG = os.path.join(ROOT, "graph.png")
 REPORT_PDF = os.path.join(ROOT, "report.pdf")
+# 성적서를 앱 안에서 보여주려고 PDF 를 이미지로 렌더한 것 (pdftoppm).
+# 발행물이 아니라 화면 표시용 캐시라 시험마다 덮어쓴다.
+REPORT_PNG = os.path.join(ROOT, "report_page.png")
 
 # ── 이력 보관 디렉터리 ──────────────────────────────────
+# 성적서 보관함 — 바탕화면의 '결과보고서' 폴더.
+# report.pdf 는 시험마다 덮어써지므로 발행한 성적서는 여기에 사본으로 남긴다.
+# 작업자가 파일 관리자를 몰라도 바탕화면에서 바로 찾을 수 있어야 한다.
+DESKTOP_DIR = os.path.join(os.path.expanduser("~"), "Desktop")
+REPORT_ARCHIVE_DIR = os.path.join(DESKTOP_DIR, "결과보고서")
+
+
+def report_archive_path(when, tests, volume):
+    """발행한 성적서를 남길 경로.
+
+    결과보고서/<연월일시>/<연월일시분>_<시험 종류>_<체적>㎥.pdf
+    예: 결과보고서/2026071719/202607171908_감압_424.21㎥.pdf
+
+    시(時) 단위로 폴더를 나눈다 — 하루에 여러 현장을 도는 운용이라 날짜만으로
+    묶으면 한 폴더에 뒤섞이고, 분 단위로 나누면 폴더가 파일만큼 생긴다.
+    """
+    folder = os.path.join(REPORT_ARCHIVE_DIR, when.strftime("%Y%m%d%H"))
+    volume = _safe_name(str(volume).strip()) or "체적미상"
+    name = f"{when.strftime('%Y%m%d%H%M')}_{_safe_name(tests)}_{volume}㎥.pdf"
+    return os.path.join(folder, name)
+
+
+def _safe_name(text):
+    """파일명에 쓸 수 없는 문자를 없앤다 (경로 구분자·제어문자)."""
+    return "".join(c for c in text if c not in '/\\:*?"<>|' and c.isprintable())
+
+
 CONDITIONS_DIR = os.path.join(ROOT, "conditions")
 MEASUREMENTS_DIR = os.path.join(ROOT, "measurements")
 CALCULATIONS_DIR = os.path.join(ROOT, "calculations")

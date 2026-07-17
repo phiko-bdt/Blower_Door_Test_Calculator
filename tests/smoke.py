@@ -34,6 +34,9 @@ DATA_FILES = ("conditions.json", "depressurization_raw.json",
 
 RESULTS = []
 
+# 스모크용 가짜 바탕화면 (성적서 보관 검사에 쓴다)
+ARCHIVE_TMP = tempfile.mkdtemp(prefix="bdt_smoke_desktop_")
+
 
 def check(name, ok, detail=""):
     RESULTS.append(ok)
@@ -67,6 +70,10 @@ def install_mocks():
         return (68, True, 65.8, None)
 
     control.get_duty = fast_get_duty
+    # 성적서 보관함을 임시 폴더로 돌린다 — 스모크가 진짜 바탕화면에 파일을
+    # 남기면 안 된다 (실데이터 백업·복원과 같은 방침).
+    paths.DESKTOP_DIR = ARCHIVE_TMP
+    paths.REPORT_ARCHIVE_DIR = os.path.join(ARCHIVE_TMP, "결과보고서")
     # 측정 기준값은 이제 모듈 상수가 아니라 settings.json 에서 온다.
     # 스모크는 대기 없이 짧게 재도록 설정 파일을 깔아 둔다 (원본은 복원된다).
     settings.save(dict(settings.DEFAULTS, measure_seconds=1.0,
@@ -113,6 +120,20 @@ def main():
         check("계산 결과 산출", isinstance(ach, float) and 0 < ach < 100,
               f"ACH50- = {ach}")
         check("성적서 PDF 존재", os.path.exists(paths.REPORT_PDF))
+
+        # 성적서 사본이 보관함에 남아야 한다 — report.pdf 는 다음 시험이
+        # 덮어쓰므로, 사본이 없으면 지난 성적서가 사라진다
+        archived = [os.path.join(r, f)
+                    for r, _, fs in os.walk(paths.REPORT_ARCHIVE_DIR)
+                    for f in fs]
+        check("성적서 사본 보관", len(archived) == 1,
+              os.path.relpath(archived[0], ARCHIVE_TMP) if archived else "없음")
+        # 파일명이 시각·시험 종류·체적을 담는가 (열지 않고 알아볼 수 있어야)
+        name = os.path.basename(archived[0]) if archived else ""
+        check("보관 파일명에 시험 종류·체적",
+              "감압" in name and "㎥" in name and name.endswith(".pdf"), name)
+        # 성적서를 앱 안에서 보여줄 이미지도 준비돼야 한다
+        check("성적서 화면 렌더 존재", os.path.exists(paths.REPORT_PNG))
 
         # ── 2. 취소 레이스: 중단 후 계산으로 직행하면 안 된다 ───
         # (사고: 지난 시험 데이터로 성적서 자동 발행)
@@ -378,6 +399,7 @@ def main():
                 # 스모크용 값이 실제 시험 설정으로 굳는다.
                 os.remove(f)
         shutil.rmtree(backup, ignore_errors=True)
+        shutil.rmtree(ARCHIVE_TMP, ignore_errors=True)
         print("(실데이터 복원 완료)")
 
     passed = sum(RESULTS)

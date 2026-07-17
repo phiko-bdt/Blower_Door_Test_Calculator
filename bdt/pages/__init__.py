@@ -7,6 +7,7 @@ from bdt.pages.live_chart import LiveMeasurementChart
 from bdt.pages.targeting import TargetingPage
 from bdt.pages.summary import CalculationSummary
 from bdt.pages.settings_page import SettingsPage
+from bdt.pages.report_view import ReportPage
 
 __all__ = [
     "InputInitialValues",
@@ -17,4 +18,5 @@ __all__ = [
     "TargetingPage",
     "CalculationSummary",
     "SettingsPage",
+    "ReportPage",
 ]
