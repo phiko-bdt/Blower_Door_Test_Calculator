@@ -128,6 +128,9 @@ class TestFlow(QObject):
         입력값을 보존하려면 저장 안 된 상태를 들고 다녀야 해 얻는 것보다
         복잡해진다.
         """
+        # 설정은 시험 단계가 아니다 — 헤더에 '조건 입력'이 켜진 채로 두면
+        # 시험이 진행 중인 것처럼 보인다. 복귀할 때 start() 가 되돌린다.
+        self.window.header.set_steps(["설정"])
         page = SettingsPage()
         page.closed.connect(self.start)
         self.window.show_page(page, step=0)
