@@ -15,9 +15,10 @@ from bdt.pages import (
     ProgressPage,
     ErrorPage,
     LiveMeasurementChart,
+    TargetingPage,
     CalculationSummary,
 )
-from bdt.tasks import BackgroundTask
+from bdt.tasks import BackgroundTask, TARGET_PRESSURE
 
 
 class MainWindow(QMainWindow):
@@ -171,19 +172,42 @@ class TestFlow(QObject):
         self.window.show_page(page, step=self.steps.index(label))
 
     def measure(self, test):
+        """목표 압력 조절 페이지부터 시작한다.
+
+        PID 가 건물에 맞는 팬 세기를 찾아 압력을 목표(70 Pa)로 끌어올리는
+        과정을 전용 화면으로 보여주고, 조절이 끝나면(targeted 시그널)
+        측정 차트로 넘어간다.
+        """
         label = self.TESTS[test]
-        page = LiveMeasurementChart(f"{label} 시험 측정 중…", num_fans=self.fan_count)
+        page = TargetingPage(f"{label} 시험 — 목표 압력 조절 중",
+                             target=TARGET_PRESSURE)
         self.window.show_page(page, step=self.steps.index(label))
 
         task = BackgroundTask(test)
         task.progress.connect(page.set_progress)
-        task.point.connect(page.add_point)
-        task.position.connect(page.move_crosshair)
+        task.raw_position.connect(page.update_position)
         # 중단 버튼 → 측정 루프가 스스로 빠져나오고 팬을 세운다
         page.cancelled.connect(task.cancel)
+        task.targeted.connect(lambda: self.show_measurement(test, task))
         self.window.measuring = True
         self._connect(task, self.next_test)
         task.start()
+
+    def show_measurement(self, test, task):
+        """조절이 끝났다 — 측정 차트 페이지로 전환하고 신호를 옮겨 단다.
+
+        이전(조절) 페이지는 show_page 가 정리하며, 파괴된 위젯으로 가던
+        시그널 연결은 Qt 가 자동으로 끊는다.
+        """
+        if self.stopped:
+            return
+        label = self.TESTS[test]
+        page = LiveMeasurementChart(f"{label} 시험 측정 중…", num_fans=self.fan_count)
+        self.window.show_page(page, step=self.steps.index(label))
+        task.progress.connect(page.set_progress)
+        task.point.connect(page.add_point)
+        task.position.connect(page.move_crosshair)
+        page.cancelled.connect(task.cancel)
 
     def after_measurement(self):
         # 측정 종료 시간 기록

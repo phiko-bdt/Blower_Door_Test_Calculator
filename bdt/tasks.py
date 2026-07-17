@@ -48,6 +48,11 @@ class BackgroundTask(QThread):
     # (풍량, 압력차, 압력 표준편차, 시험종류) 확정 측정점 → 마커 + 변동폭 가로선
     point = pyqtSignal(float, float, float, str)
     position = pyqtSignal(float, float)  # (풍량, 압력차) 현재 위치 → 십자 포인터
+    # (팬 세기 %, 압력차) — 목표 압력 조절 페이지용. position 과 달리 duty 를
+    # 풍량으로 바꾸지 않은 원시값이라 팬 계수가 없어도 나간다.
+    raw_position = pyqtSignal(float, float)
+    # 목표 압력 조절(get_duty)이 끝나고 지점 측정으로 넘어간다 → 페이지 전환
+    targeted = pyqtSignal()
 
     def __init__(self, task_type):
         super().__init__()
@@ -91,6 +96,7 @@ class BackgroundTask(QThread):
 
     def report_position(self, duty, pressure):
         """제어 중 현재 위치를 십자 포인터로만 표시한다 (마커는 찍지 않음)."""
+        self.raw_position.emit(float(duty), abs(pressure))
         flow = self.duty_flow(duty)
         if flow is not None:
             self.position.emit(flow, abs(pressure))
@@ -274,6 +280,9 @@ class BackgroundTask(QThread):
             self.report(f"{TARGET_PRESSURE} Pa 도달 실패 — "
                         f"최대 팬 세기({max_duty}%)로 측정을 진행합니다")
             duty = max_duty
+
+        # 목표 압력 조절이 끝났다 — 화면을 측정 차트로 넘긴다
+        self.targeted.emit()
 
         # 측정 범위 설정 — duty 지점에서 min_duty 직전까지 10등분
         num_to_measure = 10
