@@ -1,0 +1,22 @@
+[Unit]
+# 앱이 실행 중이 아니면 팬 PWM(GPIO13) duty 를 0 으로 강제하는 상시 감시 장치.
+# 기존 안전장치(부팅 fan_stop·앱 종료 후행 fan_stop·atexit)는 특정 시점에
+# 한 번씩만 duty 0 을 건다. 앱이 측정 중 SIGKILL 로 죽거나 래퍼 없이 직접
+# 실행한 앱이 비정상 종료하면 팬이 도는 채 남을 수 있어, 이 감시가 몇 초마다
+# 앱 유무를 확인해 그 틈을 메운다.
+Description=Blower Door Test: 팬 PWM 안전 감시 (앱 없을 때 duty 0 강제)
+Documentation=file:///home/phiko/Blower_Door_Test_Calculator/readme.md
+# sysfs PWM 만 쓰므로 데몬 의존성이 없다 (pigpiod 를 요구하지 않는다).
+After=local-fs.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/phiko/Blower_Door_Test_Calculator
+Environment=PYTHONPATH=/home/phiko/Blower_Door_Test_Calculator
+ExecStart=/usr/bin/python3 -m bdt.fan_guard
+# 감시가 어떤 이유로 죽어도 안전장치가 통째로 사라지지 않게 항상 되살린다.
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
