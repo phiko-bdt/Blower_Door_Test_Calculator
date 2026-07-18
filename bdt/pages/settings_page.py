@@ -42,9 +42,12 @@ class SettingsPage(QWidget):
         self.fields = {}       # settings 키 → QLineEdit
         self.fan_fields = {}   # ("reverse","slope") 등 → QLineEdit
 
+        # 여백을 조건 입력 페이지와 같은 값(20)으로 좁게 둔다 — 항목이 많아
+        # 1280×800 에 스크롤 없이 담아야 하는 같은 제약이다 (progress·summary
+        # 처럼 여백이 남는 화면은 24 를 쓴다).
         root = QVBoxLayout(self)
-        root.setContentsMargins(40, 24, 40, 24)
-        root.setSpacing(16)
+        root.setContentsMargins(40, 20, 40, 20)
+        root.setSpacing(14)
         root.addWidget(PageHeader("시험 설정", "Test Settings"))
 
         hint = QLabel("여기서 바꾼 값은 다음 시험부터 바로 적용됩니다. "
@@ -74,15 +77,12 @@ class SettingsPage(QWidget):
         # ── 버튼 줄 ────────────────────────────────────────────
         reset_button = QPushButton("기본값으로 되돌리기")
         reset_button.setObjectName("Secondary")
-        reset_button.setMinimumHeight(48)
         reset_button.clicked.connect(self._reset_defaults)
         cancel_button = QPushButton("취소")
         cancel_button.setObjectName("Secondary")
-        cancel_button.setMinimumHeight(48)
         cancel_button.setMinimumWidth(120)
         cancel_button.clicked.connect(self.closed.emit)
         save_button = QPushButton("저장")
-        save_button.setMinimumHeight(48)
         save_button.setMinimumWidth(180)
         save_button.clicked.connect(self._save)
 
@@ -101,7 +101,7 @@ class SettingsPage(QWidget):
         card = QFrame()
         card.setObjectName("Card")
         grid = QGridLayout(card)
-        grid.setContentsMargins(28, 20, 28, 20)
+        grid.setContentsMargins(28, 16, 28, 16)
         grid.setHorizontalSpacing(24)
         grid.setVerticalSpacing(12)
         # 항목이 여덟이라 한 줄에 하나씩 놓으면 팬 보정식이 화면 밖으로 밀린다.
@@ -193,13 +193,6 @@ class SettingsPage(QWidget):
         duty_row.addWidget(duty_hint, 1)
         outer.addLayout(duty_row)
         return card
-
-    @staticmethod
-    def _column_title(text):
-        label = QLabel(text)
-        label.setObjectName("StatName")
-        label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        return label
 
     @staticmethod
     def _fmt(value):

@@ -134,7 +134,7 @@ class LivePressureData(QWidget):
         self.stat_name.setAlignment(Qt.AlignmentFlag.AlignRight)
         stat = QFrame()
         stat.setObjectName("Card")
-        stat.setMinimumWidth(190)
+        stat.setMinimumWidth(180)
         stat_layout = QVBoxLayout(stat)
         stat_layout.setContentsMargins(18, 10, 18, 12)
         stat_layout.setSpacing(0)
@@ -143,7 +143,6 @@ class LivePressureData(QWidget):
 
         self.stop_button = QPushButton("측정 시작")
         self.stop_button.setMinimumWidth(190)
-        self.stop_button.setMinimumHeight(62)
 
         top_bar = QHBoxLayout()
         top_bar.setSpacing(0)

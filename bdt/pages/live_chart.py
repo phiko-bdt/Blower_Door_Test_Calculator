@@ -100,7 +100,6 @@ class LiveMeasurementChart(QWidget):
         # 끝이 정해진 일(안정화 대기·측정)의 남은 시간. 문구만으론 숫자가
         # 줄지 않아 멈춘 건지 기다리는 건지 알 수 없었다.
         self.countdown_bar = QProgressBar()
-        self.countdown_bar.setObjectName("Countdown")
         self.countdown_bar.setTextVisible(False)
         self.countdown_bar.setFixedHeight(6)
         self.countdown_bar.setMaximumWidth(360)
@@ -241,9 +240,9 @@ class LiveMeasurementChart(QWidget):
             scatter.setMarkerShape(shape)
             scatter.setMarkerSize(13)
             scatter.setColor(QColor(color))
-            # 겹치는 마크는 2px 흰 링으로 분리 (dataviz 마크 스펙)
-            scatter.setBorderColor(QColor("#FFFFFF"))
-            pen = QPen(QColor("#FFFFFF"))
+            # 겹치는 마크는 2px 표면색 링으로 분리 (dataviz 마크 스펙)
+            scatter.setBorderColor(QColor(theme.COLOR_SURFACE))
+            pen = QPen(QColor(theme.COLOR_SURFACE))
             pen.setWidthF(2)
             scatter.setPen(pen)
             self.chart.addSeries(scatter)

@@ -40,6 +40,9 @@ class InputInitialValues(QWidget):
         # 전체화면으로 뜨지 못한다 (실제로 그랬다 — 페이지를 붙이는 순간
         # showFullScreen 이 풀렸다). 스크롤 영역은 축소를 허용해 이 제약을
         # 없앤다. 1280×800 에서는 스크롤이 생기지 않는다.
+        # 여백이 progress·summary 같은 여백 많은 화면(24)보다 좁다. 이 페이지는
+        # 항목이 많아 1280×800 에 스크롤 없이 담으려면 조금씩 조여야 한다
+        # (설정 페이지도 같은 이유로 같은 값). 드리프트가 아니라 제약이다.
         root = QVBoxLayout()
         root.setContentsMargins(40, 20, 40, 20)
         root.setSpacing(14)
@@ -151,14 +154,12 @@ class InputInitialValues(QWidget):
 
         # 저장 버튼 (하단, 크게 — 터치용)
         save_button = QPushButton("저장하고 시작")
-        save_button.setMinimumHeight(56)
-        save_button.setMinimumWidth(260)
+        save_button.setMinimumWidth(240)
         save_button.clicked.connect(self.save_data)
         # 설정은 시험 시작 전에만 바꿀 수 있게 여기에 둔다 (측정 중에 목표
         # 압력이나 팬 보정식이 바뀌면 같은 시험 안에서 기준이 갈린다)
         settings_button = QPushButton("설정")
         settings_button.setObjectName("Secondary")
-        settings_button.setMinimumHeight(56)
         settings_button.setMinimumWidth(120)
         settings_button.clicked.connect(self.settings_requested.emit)
         btn_row = QHBoxLayout()

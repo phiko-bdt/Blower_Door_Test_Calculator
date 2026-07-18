@@ -52,7 +52,6 @@ class ReportPage(QWidget):
         # ── 성적서 이미지 ──────────────────────────────────────
         self.sheet = QLabel()
         self.sheet.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.sheet.setObjectName("ReportSheet")
 
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
@@ -64,7 +63,6 @@ class ReportPage(QWidget):
         # ── 하단 줄 ────────────────────────────────────────────
         self.zoom_button = QPushButton("100% 로 보기")
         self.zoom_button.setObjectName("Secondary")
-        self.zoom_button.setMinimumHeight(48)
         self.zoom_button.setMinimumWidth(150)
         self.zoom_button.clicked.connect(self._toggle_zoom)
 
@@ -72,7 +70,6 @@ class ReportPage(QWidget):
         self.saved_label.setObjectName("Hint")
 
         restart_button = QPushButton("새 시험 시작")
-        restart_button.setMinimumHeight(48)
         restart_button.setMinimumWidth(180)
         restart_button.clicked.connect(self.restart.emit)
 

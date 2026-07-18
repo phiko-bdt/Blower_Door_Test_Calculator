@@ -258,11 +258,14 @@ QComboBox QAbstractItemView {{
     selection-color: #ffffff;
     outline: none;
 }}
-/* 주 동작 버튼 — 터치 대상이라 채워서 쓴다 (accent 를 쓰는 몇 안 되는 자리) */
+/* 주 동작 버튼 — 터치 대상이라 채워서 쓴다 (accent 를 쓰는 몇 안 되는 자리).
+   높이는 여기 하나로 정한다. 예전엔 페이지마다 48·56·62 로 제각각 눌러
+   같은 '새 시험 시작' 버튼이 화면마다 다른 크기로 떴다. 폭은 라벨 길이에
+   맞춰 페이지가 정하지만, 높이는 손대지 않는다. */
 QPushButton {{
     font-size: 16px;
     font-weight: bold;
-    min-height: 46px;
+    min-height: 52px;
     padding: 10px 28px;
     color: #ffffff;
     background-color: {COLOR_ACCENT};
@@ -301,16 +304,6 @@ QPushButton#Danger {{
 }}
 QPushButton#Danger:hover {{ background-color: #9a1e14; }}
 QPushButton#Danger:pressed {{ background-color: #7f1910; }}
-/* 남은 시간 막대 — 그래프가 주인공이므로 얇고 조용하게 */
-QProgressBar#Countdown {{
-    background-color: {COLOR_LINE2};
-    border: none;
-    border-radius: 3px;
-}}
-QProgressBar#Countdown::chunk {{
-    background-color: {COLOR_ACCENT};
-    border-radius: 3px;
-}}
 QPushButton#HeaderQuit {{
     color: {COLOR_SUB};
     background-color: transparent;
@@ -365,6 +358,4 @@ QProgressBar::chunk {{
     background-color: {COLOR_ACCENT};
     border-radius: 3px;
 }}
-QMessageBox {{ background-color: {COLOR_SURFACE}; }}
-QMessageBox QLabel {{ font-size: 15px; }}
 """

@@ -207,7 +207,7 @@ class CalculationSummary(QWidget):
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(40, 24, 40, 24)
-        outer.setSpacing(14)
+        outer.setSpacing(16)
         outer.addWidget(header)
         # 카드는 내용만큼만 차지하고(늘리면 안이 텅 빈 채로 벌어진다)
         # 남는 공간을 위아래로 나눠 가운데에 둔다
