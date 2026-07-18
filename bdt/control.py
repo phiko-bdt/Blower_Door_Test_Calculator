@@ -10,6 +10,10 @@ from simple_pid import PID
 
 from bdt import hardware
 
+# 압력 표시·밴드 판정에 쓰는 이동평균 창 크기 (0.1초 간격 → 약 1초 평활).
+# TargetingPage 도 이 값을 참조해 화면과 판정이 같은 창을 쓰게 한다.
+SMOOTH_WINDOW = 10
+
 
 def duty_transformation(input_value, min_value, max_value):
     """PID 의 duty(0~100)를 팬이 실제로 받는 duty 로 옮긴다.
@@ -95,6 +99,19 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
     current = abs(hardware.pressure_read(0.1, test=test))
     duty = 0
 
+    # 압력 이동평균 — 표시선과 밴드 판정을 같은 매끄러운 값으로 맞춘다.
+    # 0.1초마다 읽는 원시 압력은 바람·센서 노이즈로 들쭉날쭉해, 그대로 판정하면
+    # 한 번 튄 값에 카운트가 리셋된다. 최근 N 점 평균으로 판정하면 단발 스파이크에
+    # 흔들리지 않으면서도 '연속 유지'는 그대로 요구한다 (유령값은 CRC 가 이미
+    # 걸러 여기 안 온다). 화면에도 이 평균값을 보내 선과 판정이 어긋나지 않는다.
+    smooth_window = []
+
+    def smooth(value):
+        smooth_window.append(value)
+        if len(smooth_window) > SMOOTH_WINDOW:
+            smooth_window.pop(0)
+        return sum(smooth_window) / len(smooth_window)
+
     # 압력 수렴 조건
     convergence_time = 0
     pressure_threshold = target * tolerance_percent / 100.0
@@ -139,7 +156,9 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
         last_tick = time.time()
         while time.time() < deadline:
             cancel_check()
-            live = abs(hardware.pressure_read(0.1, test=test))
+            # 원시값을 이동평균으로 매끄럽게 한 뒤, 그 값을 그리고 그 값으로
+            # 밴드를 판정한다 (선 = 판정 기준).
+            live = smooth(abs(hardware.pressure_read(0.1, test=test)))
             notify_point(duty_real, live)
 
             now = time.time()
@@ -166,7 +185,8 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
             if convergence_time >= duration or failure_time >= duration:
                 break  # 판정이 섰다 — 남은 대기는 의미가 없다
 
-        # 압력 값 측정 (PID 입력)
+        # 압력 값 측정 (PID 입력) — PID 에는 원시값을 준다 (제어는 지연 없이
+        # 실제 압력을 봐야 한다). 밴드 판정은 위 대기 루프의 이동평균이 이미 했다.
         current = abs(hardware.pressure_read(average_time, test=test))
         # duty의 이동 평균 계산
         window.append(duty)
@@ -179,8 +199,8 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
         error_pressure = abs(target - current)
         # duty 오차 # 사용하지 않음
         error_duty = abs(duty_avg - duty)
-        # 제어 중 측정한 점도 실시간 그래프에 표시한다
-        notify_point(duty_real, current)
+        # 이 측정점도 이동평균에 넣어 그린다 (표시선이 튀지 않게)
+        notify_point(duty_real, smooth(current))
 
         # 유지 시간은 위 대기 루프가 실시간으로 셌다 — 여기서 또 더하면
         # 같은 시간을 두 번 세게 된다. 여기서는 상황만 알린다.

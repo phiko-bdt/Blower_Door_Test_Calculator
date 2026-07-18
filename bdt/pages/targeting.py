@@ -47,8 +47,7 @@ class TargetingPage(QWidget):
         super().__init__()
         self.target = float(target)
         self.tolerance = float(tolerance)
-        self._samples = []   # 화면에 그리는 (x, 이동평균 압력)
-        self._raw = []       # 최근 원시 압력 (이동평균 창)
+        self._samples = []   # 화면에 그리는 (x, 압력)
         self._next_x = 0
         self._hold_kind = None    # "converge" | "fail" | None
         self._hold_start_x = None
@@ -355,26 +354,15 @@ class TargetingPage(QWidget):
                    float(self._hold_start_x), float(x1), y_hi, y_lo)
 
     # ── 작업 스레드에서 오는 갱신 ──────────────────────────────
-    # 압력 표시용 이동평균 창. PID 대기 중 압력을 0.1초마다 읽어 초당 몇 점씩
-    # 들어오는데, 원시값 그대로 그리면 바람·센서 노이즈로 선이 들쭉날쭉해
-    # 추세를 읽기 어렵다. 최근 N 점 평균으로 매끄럽게 그린다.
-    #
-    # **표시만 매끄럽게 할 뿐, 수렴 판정(밴드 유지)은 control.get_duty 가
-    # 원시값으로 한다** — 실제로 안정됐는지는 원시값이 판단해야 하고, 매끄러운
-    # 선이 밴드 안에 있어도 원시값이 튀면 카운트는 정직하게 리셋된다.
-    SMOOTH_WINDOW = 10
-
     def update_position(self, duty, pressure):
-        """(팬 세기, 압력차) 표본 하나를 반영한다. 압력은 이동평균으로 그린다."""
-        self.duty_value.setText(f"{duty:.0f}")
-        self._raw.append(pressure)
-        if len(self._raw) > self.SMOOTH_WINDOW:
-            self._raw.pop(0)
-        smoothed = sum(self._raw) / len(self._raw)
+        """(팬 세기, 압력차) 표본 하나를 반영한다.
 
-        # 타일도 같은 이동평균값을 보여줘 선과 숫자가 어긋나지 않게 한다
-        self.pressure_value.setText(f"{smoothed:.1f}")
-        self._samples.append(QPointF(self._next_x, smoothed))
+        압력은 control.get_duty 가 이미 이동평균으로 매끄럽게 해 보낸 값이다
+        (표시선과 밴드 판정이 같은 값을 쓴다 — 여기서 또 평활하지 않는다).
+        """
+        self.duty_value.setText(f"{duty:.0f}")
+        self.pressure_value.setText(f"{pressure:.1f}")
+        self._samples.append(QPointF(self._next_x, pressure))
         self._next_x += 1
         if len(self._samples) > self.MAX_SAMPLES:
             self._samples.pop(0)
