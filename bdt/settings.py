@@ -33,6 +33,9 @@ DEFAULTS = {
     # 시험을 진행할 수 있는 압력 상한. 팬을 최소로 낮춰도 이보다 높으면
     # 압력을 제어할 수 없으므로 시험 불가로 본다.
     "max_pressure": 100.0,
+    # 조절 화면 압력·수렴 판정에 쓰는 이동평균 점수 (0.1초 간격 → 10점 ≈ 1초).
+    # 크게 잡으면 매끄럽지만 불안정을 늦게 감지하고, 1 이면 평활 없이 원시값.
+    "smooth_window": 10,
 
     # ── 지점 측정 (blower_door_test) ───────────────────────
     "measure_seconds": 10.0,      # 한 지점에서 압력을 평균낼 시간
@@ -52,6 +55,7 @@ FIELDS = [
      "수렴 판정 폭 (70 Pa 의 10% → ±7 Pa)"),
     ("hold_seconds", "수렴 유지 시간", "초", "허용 오차 안에 머물 연속 시간"),
     ("max_pressure", "시험 가능 상한", "Pa", "넘으면 시험 불가로 판정"),
+    ("smooth_window", "압력 평활 창", "점", "조절 압력·수렴 판정 이동평균 점수"),
     ("measure_seconds", "지점 측정 시간", "초", "측정 지점당 압력 평균 시간"),
     ("settle_seconds_per_duty", "안정화 대기", "초/duty",
      "duty 1 당 압력 안정화 대기"),
@@ -65,13 +69,14 @@ LIMITS = {
     "tolerance_percent": (1.0, 50.0),
     "hold_seconds": (1.0, 120.0),
     "max_pressure": (10.0, 500.0),
+    "smooth_window": (1, 60),
     "measure_seconds": (1.0, 120.0),
     "settle_seconds_per_duty": (0.0, 30.0),
     "num_points": (5, 30),
     "low_pressure_warn": (0.0, 50.0),
 }
 
-INTEGER_KEYS = {"num_points"}
+INTEGER_KEYS = {"num_points", "smooth_window"}
 
 
 def load():

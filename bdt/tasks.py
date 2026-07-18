@@ -387,6 +387,7 @@ class BackgroundTask(QThread):
             check_cancelled=self._check_cancelled,
             tolerance_percent=cfg["tolerance_percent"],
             hold_seconds=cfg["hold_seconds"],
+            smooth_window=cfg["smooth_window"],
             on_hold=self.report_hold)
         # get_duty 가 팬에 마지막으로 건 duty. 첫 측정 지점의 안정화 시간을
         # 계산할 기준이며, 실패 시 duty 를 max 로 덮어써도 팬의 실제 상태는

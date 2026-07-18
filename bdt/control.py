@@ -52,7 +52,8 @@ def duty_transformation(input_value, min_value, max_value):
 
 def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=100, test=True,
              progress=None, on_point=None, check_cancelled=None,
-             tolerance_percent=10.0, hold_seconds=10.0, on_hold=None):
+             tolerance_percent=10.0, hold_seconds=10.0, on_hold=None,
+             smooth_window=SMOOTH_WINDOW):
     '''
     [2023-11-18]
     reversible fan 사용 시 pwm duty
@@ -104,13 +105,14 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
     # 한 번 튄 값에 카운트가 리셋된다. 최근 N 점 평균으로 판정하면 단발 스파이크에
     # 흔들리지 않으면서도 '연속 유지'는 그대로 요구한다 (유령값은 CRC 가 이미
     # 걸러 여기 안 온다). 화면에도 이 평균값을 보내 선과 판정이 어긋나지 않는다.
-    smooth_window = []
+    n_smooth = max(1, int(smooth_window))
+    pressure_window = []
 
     def smooth(value):
-        smooth_window.append(value)
-        if len(smooth_window) > SMOOTH_WINDOW:
-            smooth_window.pop(0)
-        return sum(smooth_window) / len(smooth_window)
+        pressure_window.append(value)
+        if len(pressure_window) > n_smooth:
+            pressure_window.pop(0)
+        return sum(pressure_window) / len(pressure_window)
 
     # 압력 수렴 조건
     convergence_time = 0

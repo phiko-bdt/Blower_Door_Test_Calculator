@@ -60,7 +60,7 @@ class SettingsPage(QWidget):
         body = QWidget()
         body_layout = QVBoxLayout(body)
         body_layout.setContentsMargins(0, 0, 12, 0)
-        body_layout.setSpacing(16)
+        body_layout.setSpacing(12)
 
         body_layout.addWidget(SectionTitle("측정 기준값"))
         body_layout.addWidget(self._values_card())
@@ -101,9 +101,9 @@ class SettingsPage(QWidget):
         card = QFrame()
         card.setObjectName("Card")
         grid = QGridLayout(card)
-        grid.setContentsMargins(28, 16, 28, 16)
+        grid.setContentsMargins(28, 12, 28, 12)
         grid.setHorizontalSpacing(24)
-        grid.setVerticalSpacing(12)
+        grid.setVerticalSpacing(8)
         # 항목이 여덟이라 한 줄에 하나씩 놓으면 팬 보정식이 화면 밖으로 밀린다.
         # 이름·설명을 한 덩어리로 묶어 2열로 앉힌다.
         grid.setColumnStretch(0, 1)
@@ -138,8 +138,8 @@ class SettingsPage(QWidget):
         card = QFrame()
         card.setObjectName("Card")
         outer = QVBoxLayout(card)
-        outer.setContentsMargins(28, 16, 28, 16)
-        outer.setSpacing(10)
+        outer.setContentsMargins(28, 12, 28, 12)
+        outer.setSpacing(8)
 
         note = QLabel("누기량(㎥/h) = (기울기 × 팬 세기(%) + 절편) × 팬 수량")
         note.setObjectName("Hint")
