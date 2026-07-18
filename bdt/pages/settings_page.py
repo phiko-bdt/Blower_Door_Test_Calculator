@@ -101,16 +101,16 @@ class SettingsPage(QWidget):
         card = QFrame()
         card.setObjectName("Card")
         grid = QGridLayout(card)
-        grid.setContentsMargins(28, 12, 28, 12)
-        grid.setHorizontalSpacing(24)
-        grid.setVerticalSpacing(8)
-        # 항목이 여덟이라 한 줄에 하나씩 놓으면 팬 보정식이 화면 밖으로 밀린다.
-        # 이름·설명을 한 덩어리로 묶어 2열로 앉힌다.
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(2, 1)
+        grid.setContentsMargins(28, 16, 28, 16)
+        grid.setHorizontalSpacing(20)
+        grid.setVerticalSpacing(12)
+        # 9개 항목을 3×3 으로 앉힌다 (한 필드 = 이름·설명 묶음 + 입력칸, 두 열
+        # 차지). 3행이라 세로가 짧아 팬 보정식·버튼까지 한 화면에 들어온다.
+        for c in (0, 2, 4):
+            grid.setColumnStretch(c, 1)
 
         for idx, (key, name, unit, description) in enumerate(settings.FIELDS):
-            row, col = divmod(idx, 2)
+            row, col = divmod(idx, 3)
             label = QLabel(f"{name} ({unit})")
             label.setObjectName("FieldLabel")
             note = QLabel(description)
