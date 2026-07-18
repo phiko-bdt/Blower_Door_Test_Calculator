@@ -86,10 +86,16 @@
     SSID·비번을 NM 에서 읽음) → ② 다운로드 주소 QR(`web.base_url` 이 **AP IP
     10.42.0.1 우선**, 없으면 일반 LAN IP 폴백). QR 은 segno(apt: python3-segno),
     없어도 주소 텍스트로 폴백.
-  - AP 재설정(새 단말): `nmcli device wifi hotspot ifname wlan1 con-name
-    bdt-share ssid BlowerDoor-Test password <8자+>` 뒤 `nmcli con modify
-    bdt-share connection.interface-name wlan1 connection.autoconnect yes`.
-    wlan1 동글이 빠지면 AP 불가 — 동글은 상시 장착.
+  - **납품 vs 개발 인터페이스**: 납품은 **내장 wlan0 을 AP** 로 쓴다(USB 동글은
+    뺀다). 현장엔 WiFi 가 없어 wlan0 은 인터넷에 안 물리고 AP 전용이며,
+    hong_home 같은 저장된 WiFi 도 현장엔 없어 wlan0 이 자연히 AP 가 된다.
+    개발 중에는 동글(wlan1)로 인터넷을 쓰므로 AP 를 wlan1 에 둔다(원격 세션이
+    wlan0 인터넷에 물려 있으면 AP 를 wlan0 으로 옮기다 세션이 끊긴다 — 콘솔
+    있을 때 하거나 인터넷을 먼저 다른 IF 로 옮길 것).
+  - AP 설정은 `setup-hotspot.sh [인터페이스] [SSID] [비번]` 로 재현
+    (납품: `./setup-hotspot.sh wlan0`). 인터페이스를 반드시 고정한다.
+    web.py 는 인터페이스 무관 — `bdt-share` 연결에서 SSID·IP·비번을 읽으므로
+    wlan0/wlan1 어디에 묶든 그대로 동작한다.
   - LAN 전용·인증 없음(성적서에 의뢰자 정보) — AP 비번으로만 막는다.
     포트 8080 을 다른 프로세스가 쥐면 서비스가 크래시 루프(Address already in
     use), 수동 `python3 -m bdt.web` 를 띄웠다면 반드시 정리할 것.
