@@ -31,6 +31,27 @@ from bdt import paths
 from bdt.widgets import alert
 
 
+def _qr_pixmap(url, size=150):
+    """URL 을 담은 QR 코드 QPixmap. segno 가 없으면 None (주소 텍스트로 대체).
+
+    segno 로 PNG 를 메모리에 그려 QPixmap 으로 읽는다. 외부 파일을 안 만든다.
+    """
+    try:
+        import io
+        import segno
+        from PyQt6.QtGui import QPixmap
+        buf = io.BytesIO()
+        # scale 을 키워 또렷하게 그린 뒤 위젯 크기로 부드럽게 줄인다
+        segno.make(url, error="m").save(buf, kind="png", scale=8, border=2)
+        pm = QPixmap()
+        pm.loadFromData(buf.getvalue(), "PNG")
+        return pm.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio,
+                         Qt.TransformationMode.SmoothTransformation)
+    except Exception:
+        # segno 미설치·인코딩 실패 — QR 없이도 주소 안내는 되게 조용히 넘어간다
+        return None
+
+
 class ReportPage(QWidget):
     """성적서 이미지 + 화면맞춤/100% 전환 + 새 시험."""
 
@@ -51,7 +72,8 @@ class ReportPage(QWidget):
         root.setContentsMargins(40, 14, 40, 14)
         root.setSpacing(10)
 
-        # ── 성적서 이미지 ──────────────────────────────────────
+        # ── 성적서 이미지(좌) + 폰 공유 QR(우) ─────────────────
+        # A4 세로 지면이라 가로로 여백이 남는다 — 그 오른쪽에 QR 을 둔다.
         self.sheet = QLabel()
         self.sheet.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -60,7 +82,12 @@ class ReportPage(QWidget):
         self.scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.scroll.setWidget(self.sheet)
-        root.addWidget(self.scroll, 1)
+
+        content = QHBoxLayout()
+        content.setSpacing(16)
+        content.addWidget(self.scroll, 1)
+        content.addWidget(self._qr_panel())
+        root.addLayout(content, 1)
 
         # ── 하단 줄 ────────────────────────────────────────────
         self.zoom_button = QPushButton("100% 로 보기")
@@ -105,10 +132,12 @@ class ReportPage(QWidget):
 
         # PDF 가 없으면(렌더 실패해도 PDF 는 있어야 정상) USB 복사도 막는다
         self._can_copy = os.path.exists(self._pdf_path)
-        self._usb_timer = QTimer(self)
-        self._usb_timer.timeout.connect(self._refresh_usb)
-        self._usb_timer.start(2000)
-        self._refresh_usb()
+        # USB·네트워크 QR 을 2초마다 갱신 (화면 떠 있는 동안 꽂거나 연결해도
+        # 반영되게). 한 타이머로 둘 다 본다.
+        self._poll = QTimer(self)
+        self._poll.timeout.connect(self._refresh_devices)
+        self._poll.start(2000)
+        self._refresh_devices()
 
         if self._pixmap.isNull():
             # 렌더가 없거나 깨졌다 — 성적서 PDF 는 만들어졌으므로 시험은
@@ -137,9 +166,62 @@ class ReportPage(QWidget):
         # NanumSquare 에 '›'(U+203A) 글리프가 없어 공백으로 렌더된다 — '/' 사용
         return "  /  ".join(crumbs)
 
+    # ── 폰 공유 QR ────────────────────────────────────────────
+    def _qr_panel(self):
+        """A4 지면 오른쪽 여백에 두는 QR 카드 (네트워크 있을 때만 보인다)."""
+        caption = QLabel("폰으로 스캔해 받기")
+        caption.setObjectName("StatName")
+        caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.qr_image = QLabel()
+        self.qr_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.qr_url = QLabel()
+        self.qr_url.setObjectName("Hint")
+        self.qr_url.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.qr_url.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+
+        self.qr_panel = QFrame()
+        self.qr_panel.setObjectName("Card")
+        self.qr_panel.setFixedWidth(220)
+        lay = QVBoxLayout(self.qr_panel)
+        lay.setContentsMargins(16, 18, 16, 18)
+        lay.setSpacing(10)
+        lay.addStretch(1)
+        lay.addWidget(caption)
+        lay.addWidget(self.qr_image)
+        lay.addWidget(self.qr_url)
+        lay.addStretch(1)
+        self.qr_panel.setVisible(False)
+        self._qr_url_shown = None
+        return self.qr_panel
+
+    def _refresh_qr(self):
+        """네트워크가 있으면 서버 주소 QR 을 보여주고, 없으면 패널을 숨긴다."""
+        from bdt import web
+        url = web.base_url()
+        if not url:
+            self.qr_panel.setVisible(False)
+            self._qr_url_shown = None
+            return
+        if url != self._qr_url_shown:   # IP 바뀌었을 때만 다시 그린다
+            pixmap = _qr_pixmap(url)
+            if pixmap is None:
+                # segno 가 없으면 QR 없이 주소만 안내한다
+                self.qr_image.setText("주소로 접속:")
+            else:
+                self.qr_image.setPixmap(pixmap)
+            self.qr_url.setText(url.replace("http://", "").rstrip("/"))
+            self._qr_url_shown = url
+        self.qr_panel.setVisible(True)
+
     # ── USB 복사 ──────────────────────────────────────────────
+    def _refresh_devices(self):
+        """USB·네트워크 상태를 확인해 관련 UI 를 켜고 끈다 (2초마다)."""
+        self._refresh_usb()
+        self._refresh_qr()
+
     def _refresh_usb(self):
-        """USB 유무를 확인해 복사 버튼을 켜고 끈다 (2초마다)."""
+        """USB 유무를 확인해 복사 버튼을 켜고 끈다."""
         self._usb = paths.usb_mounts() if self._can_copy else []
         self.usb_button.setVisible(bool(self._usb))
 

@@ -1,0 +1,22 @@
+[Unit]
+# 성적서 로컬 웹 공유 — 같은 네트워크의 폰·노트북이 성적서를 주고받는다.
+# 성적서 화면의 QR 코드가 이 서버(http://<Pi IP>:8080)를 가리킨다. 앱과
+# 무관하게 상시 떠 있어야 앱이 꺼진 뒤에도 지난 성적서를 받을 수 있다.
+Description=Blower Door Test: 성적서 로컬 웹 공유 (같은 네트워크에서 주고받기)
+Documentation=file:///home/phiko/Blower_Door_Test_Calculator/readme.md
+# 네트워크가 붙은 뒤 뜨는 게 이상적이지만, 없어도 뜨고(주소만 없음) 붙으면
+# 자동으로 접속 가능해진다.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=phiko
+WorkingDirectory=/home/phiko/Blower_Door_Test_Calculator
+Environment=PYTHONPATH=/home/phiko/Blower_Door_Test_Calculator
+ExecStart=/usr/bin/python3 -m bdt.web
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
