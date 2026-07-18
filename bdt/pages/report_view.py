@@ -13,6 +13,7 @@ PDF 파일 자체는 예전과 같은 자리에 그대로 저장된다 (report.p
 """
 
 import os
+import shutil
 
 from PyQt6.QtWidgets import (
     QWidget,
@@ -23,10 +24,11 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QFrame,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QPixmap
 
 from bdt import paths
+from bdt.widgets import alert
 
 
 class ReportPage(QWidget):
@@ -80,6 +82,14 @@ class ReportPage(QWidget):
         saved_block.addWidget(saved_caption)
         saved_block.addWidget(self.saved_label)
 
+        # USB 복사 — USB 저장소가 꽂혀 있을 때만 뜬다. 성적서 화면이 떠 있는
+        # 동안 꽂아도 나타나게 주기적으로 확인한다.
+        self.usb_button = QPushButton("USB로 복사")
+        self.usb_button.setObjectName("Secondary")
+        self.usb_button.setMinimumWidth(150)
+        self.usb_button.clicked.connect(self._copy_to_usb)
+        self.usb_button.setVisible(False)
+
         restart_button = QPushButton("새 시험 시작")
         restart_button.setMinimumWidth(180)
         restart_button.clicked.connect(self.restart.emit)
@@ -89,8 +99,16 @@ class ReportPage(QWidget):
         bottom.addWidget(self.zoom_button)
         bottom.addLayout(saved_block)
         bottom.addStretch(1)
+        bottom.addWidget(self.usb_button)
         bottom.addWidget(restart_button)
         root.addLayout(bottom)
+
+        # PDF 가 없으면(렌더 실패해도 PDF 는 있어야 정상) USB 복사도 막는다
+        self._can_copy = os.path.exists(self._pdf_path)
+        self._usb_timer = QTimer(self)
+        self._usb_timer.timeout.connect(self._refresh_usb)
+        self._usb_timer.start(2000)
+        self._refresh_usb()
 
         if self._pixmap.isNull():
             # 렌더가 없거나 깨졌다 — 성적서 PDF 는 만들어졌으므로 시험은
@@ -118,6 +136,64 @@ class ReportPage(QWidget):
             crumbs = self._archive_path.split(os.sep)
         # NanumSquare 에 '›'(U+203A) 글리프가 없어 공백으로 렌더된다 — '/' 사용
         return "  /  ".join(crumbs)
+
+    # ── USB 복사 ──────────────────────────────────────────────
+    def _refresh_usb(self):
+        """USB 유무를 확인해 복사 버튼을 켜고 끈다 (2초마다)."""
+        self._usb = paths.usb_mounts() if self._can_copy else []
+        self.usb_button.setVisible(bool(self._usb))
+
+    def _copy_dest_name(self):
+        """USB 에 남길 파일 이름 — 보관본과 같은 뜻있는 이름."""
+        if self._archive_path:
+            return os.path.basename(self._archive_path)
+        return "기밀성능시험_성적서.pdf"
+
+    def _copy_to_usb(self):
+        """성적서 PDF 를 꽂힌 USB(들)에 복사한다.
+
+        같은 이름이 이미 있으면 덮지 않고 번호를 붙인다 (보관함과 같은 방침).
+        복사가 끝났거나 실패했음을 알린다 — USB 는 뽑으면 그만이라 결과를
+        분명히 알려야 작업자가 안심하고 뽑는다.
+        """
+        mounts = paths.usb_mounts()
+        if not mounts:
+            # 버튼을 누르는 사이 뽑혔다
+            self._refresh_usb()
+            alert(self, "USB 없음", "USB 저장소가 연결돼 있지 않습니다.")
+            return
+
+        name = self._copy_dest_name()
+        copied, failed = [], []
+        for mount in mounts:
+            dest = os.path.join(mount, name)
+            stem, ext = os.path.splitext(dest)
+            n = 2
+            while os.path.exists(dest):
+                dest = f"{stem}({n}){ext}"
+                n += 1
+            try:
+                shutil.copy2(self._pdf_path, dest)
+                # 뽑을 때 파일이 깨지지 않게 캐시를 디스크로 내린다
+                os.sync()
+                copied.append(os.path.basename(mount))
+            except OSError as exc:
+                failed.append(f"{os.path.basename(mount)} ({exc})")
+
+        if copied and not failed:
+            where = ", ".join(copied)
+            alert(self, "USB 복사 완료",
+                  f"성적서를 USB 에 복사했습니다.\n\n"
+                  f"저장 위치: {where}\n파일 이름: {name}\n\n"
+                  "USB 를 안전하게 뽑아도 됩니다.")
+        elif copied and failed:
+            alert(self, "일부만 복사됨",
+                  f"복사됨: {', '.join(copied)}\n실패: {', '.join(failed)}")
+        else:
+            alert(self, "USB 복사 실패",
+                  "성적서를 USB 에 복사하지 못했습니다.\n\n"
+                  f"{', '.join(failed)}\n\n"
+                  "USB 가 쓰기 금지(잠금)이거나 공간이 부족할 수 있습니다.")
 
     # ── 확대 ──────────────────────────────────────────────────
     def _toggle_zoom(self):

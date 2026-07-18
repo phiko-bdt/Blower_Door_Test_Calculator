@@ -34,6 +34,31 @@ REPORT_PNG = os.path.join(ROOT, "report_page.png")
 DESKTOP_DIR = os.path.join(os.path.expanduser("~"), "Desktop")
 REPORT_ARCHIVE_DIR = os.path.join(DESKTOP_DIR, "결과보고서")
 
+# USB 저장소 자동 마운트 위치. 라즈베리파이 데스크톱(udisks2)은 꽂힌 USB 를
+# /media/<사용자>/<라벨> 로 올린다. 사용자 이름은 홈 디렉터리에서 끌어온다
+# (DESKTOP_DIR 과 같은 소스).
+MEDIA_DIR = os.path.join("/media", os.path.basename(os.path.expanduser("~")))
+
+
+def usb_mounts():
+    """마운트된 USB 저장소 경로 목록. 없으면 빈 리스트.
+
+    /media/<사용자>/ 아래에서 실제 마운트포인트인 항목만 고른다 (빈 폴더나
+    마운트 해제된 잔여 디렉터리는 제외). 성적서 화면이 이걸로 'USB로 복사'
+    버튼을 띄울지 정한다.
+    """
+    if not os.path.isdir(MEDIA_DIR):
+        return []
+    found = []
+    for name in sorted(os.listdir(MEDIA_DIR)):
+        path = os.path.join(MEDIA_DIR, name)
+        try:
+            if os.path.ismount(path):
+                found.append(path)
+        except OSError:
+            continue
+    return found
+
 
 def report_archive_path(when, tests, volume):
     """발행한 성적서를 남길 경로.
