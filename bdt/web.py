@@ -16,6 +16,7 @@
 import os
 import socket
 import html
+import subprocess
 from datetime import datetime
 
 from flask import (Flask, send_from_directory, request, redirect,
@@ -24,6 +25,11 @@ from flask import (Flask, send_from_directory, request, redirect,
 from bdt import paths
 
 PORT = 8080
+# 이 단말이 띄우는 AP(핫스팟) NetworkManager 연결 이름. 전용 USB WiFi(wlan1)
+# 에 고정돼 상시 방송한다 — 폰이 여기 붙어 성적서를 받는다. wlan0(내장)은
+# 인터넷용으로 따로 둔다. 설정: nmcli con(bdt-share), ipv4.method shared →
+# 10.42.0.1 + DHCP.
+AP_CON = "bdt-share"
 # 폰에서 올린 파일을 받는 곳 (바탕화면). 성적서 보관함과 나란히 둔다.
 UPLOAD_DIR = os.path.join(paths.DESKTOP_DIR, "받은파일")
 
@@ -48,9 +54,63 @@ def lan_ip():
         s.close()
 
 
+def _nmcli(*args):
+    """nmcli 를 조용히 실행해 표준출력을 준다. 실패하면 빈 문자열."""
+    try:
+        r = subprocess.run(("nmcli",) + args, capture_output=True,
+                           text=True, timeout=4)
+        return r.stdout if r.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def ap_ip():
+    """상시 AP(bdt-share)의 IP. 보통 10.42.0.1. AP 가 안 떠 있으면 None.
+
+    폰은 AP 망(10.42.0.x)에 붙으므로, 다운로드 주소는 반드시 이 IP 여야 한다
+    — 인터넷용 wlan0 의 IP(예: 192.168.x)로는 폰이 못 온다.
+    """
+    for line in _nmcli("-g", "IP4.ADDRESS", "con", "show", AP_CON).splitlines():
+        ip = line.split("/")[0].strip()
+        if ip:
+            return ip
+    return None
+
+
+def ap_credentials():
+    """(SSID, 비밀번호) — WiFi 접속 QR 에 쓴다. NetworkManager 에서 그대로 읽어
+    AP 설정과 QR 이 어긋나지 않게 한다. 설정이 없으면 None."""
+    out = _nmcli("-s", "-g",
+                 "802-11-wireless.ssid,802-11-wireless-security.psk",
+                 "con", "show", AP_CON)
+    lines = out.splitlines()
+    if len(lines) >= 2 and lines[0].strip():
+        return lines[0].strip(), lines[1].strip()
+    return None
+
+
+def wifi_qr_payload():
+    """폰이 스캔하면 AP 에 바로 접속되는 WiFi QR 문자열. 설정 없으면 None.
+
+    형식 'WIFI:T:WPA;S:<ssid>;P:<pw>;;' — iOS·안드로이드 카메라가 인식한다.
+    값 안의 특수문자(\\ ; , : ")는 백슬래시로 escape 한다 (WIFI QR 규격).
+    """
+    cred = ap_credentials()
+    if not cred:
+        return None
+    def esc(v):
+        for ch in '\\;,:"':
+            v = v.replace(ch, "\\" + ch)
+        return v
+    ssid, pw = cred
+    return f"WIFI:T:WPA;S:{esc(ssid)};P:{esc(pw)};;"
+
+
 def base_url():
-    """폰이 접속할 주소. 네트워크가 없으면 None."""
-    ip = lan_ip()
+    """폰이 접속할 다운로드 주소. AP IP 를 우선한다 (폰이 붙는 망).
+
+    AP 가 없으면 일반 LAN IP 로 폴백한다 (사무실 WiFi 등에서 쓸 때)."""
+    ip = ap_ip() or lan_ip()
     return f"http://{ip}:{PORT}/" if ip else None
 
 

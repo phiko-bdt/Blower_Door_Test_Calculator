@@ -73,15 +73,26 @@
   - 상한 이내면 → `_find_upper_duty` 로 상한을 넘지 않는 가장 높은 팬 세기를
     실측 탐색해 거기서부터 최저 지점까지 훑는다. **최대 duty 로 올려 훑지 말 것**
     — 압력이 이미 목표를 넘었는데 팬을 더 돌리는 정반대 처리다 (실제 있던 버그).
-- **성적서 공유는 USB 복사 + 로컬 웹**(둘 다 성적서 화면에서). USB 복사 버튼은
-  `/media/<user>/` 에 마운트된 USB 가 있을 때만 뜬다(`paths.usb_mounts`, 2초 폴링).
-  로컬 웹은 `bdt.web`(Flask)이 바탕화면 `결과보고서` 폴더를 서빙하고
-  (bdt-web.service, 포트 8080, LAN 전용·인증 없음), 성적서 화면 오른쪽 QR 이
-  그 주소(http://<IP>:8080)를 담아 폰으로 스캔·다운로드/업로드하게 한다.
-  QR 은 segno(apt: python3-segno)로 그리되 **없어도 주소 텍스트로 폴백**한다.
-  같은 네트워크의 누구나 접근하므로(성적서에 의뢰자 정보 있음) 신뢰 망에서만.
-  포트 8080 을 다른 프로세스가 쥐면 서비스가 크래시 루프(Address already in
-  use)에 빠지니, 수동으로 `python3 -m bdt.web` 를 띄웠다면 반드시 정리할 것.
+- **성적서 공유는 USB 복사 + 자체 핫스팟(AP) 웹**(둘 다 성적서 화면에서).
+  USB 복사 버튼은 `/media/<user>/` 에 마운트된 USB 가 있을 때만 뜬다
+  (`paths.usb_mounts`, 2초 폴링).
+  - **웹 공유 구조 = 단말이 AP**: 전용 USB WiFi(**wlan1**, Realtek rtl8192cu)로
+    상시 AP `BlowerDoor-Test`(10.42.0.1)를 방송하고, 폰이 거기 붙어 받는다.
+    내장 wlan0 은 인터넷용으로 따로 둔다(동시 구동 — AP 켜도 인터넷 안 끊김).
+    **AP 는 반드시 wlan1 에 고정**(nmcli `connection.interface-name wlan1`)해야
+    한다 — 안 그러면 NM 이 wlan0 에 AP 를 올려 인터넷·원격이 끊긴다.
+  - `bdt.web`(Flask, bdt-web.service, 포트 8080)이 바탕화면 `결과보고서` 를
+    서빙. 성적서 화면 오른쪽에 **2단계 QR**: ① WiFi 접속 QR(`web.wifi_qr_payload`,
+    SSID·비번을 NM 에서 읽음) → ② 다운로드 주소 QR(`web.base_url` 이 **AP IP
+    10.42.0.1 우선**, 없으면 일반 LAN IP 폴백). QR 은 segno(apt: python3-segno),
+    없어도 주소 텍스트로 폴백.
+  - AP 재설정(새 단말): `nmcli device wifi hotspot ifname wlan1 con-name
+    bdt-share ssid BlowerDoor-Test password <8자+>` 뒤 `nmcli con modify
+    bdt-share connection.interface-name wlan1 connection.autoconnect yes`.
+    wlan1 동글이 빠지면 AP 불가 — 동글은 상시 장착.
+  - LAN 전용·인증 없음(성적서에 의뢰자 정보) — AP 비번으로만 막는다.
+    포트 8080 을 다른 프로세스가 쥐면 서비스가 크래시 루프(Address already in
+    use), 수동 `python3 -m bdt.web` 를 띄웠다면 반드시 정리할 것.
 - **성적서는 앱 안에서 보여준다** (외부 뷰어 금지). `report.pdf` 를 pdftoppm
   으로 이미지 렌더해 `ReportPage` 가 띄운다. 전체화면 단말에서 남의 창(evince)이
   위를 덮으면 작업자가 앱으로 못 돌아온다. 렌더는 reporting 작업이 백그라운드에

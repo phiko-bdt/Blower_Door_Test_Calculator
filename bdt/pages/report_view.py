@@ -166,52 +166,90 @@ class ReportPage(QWidget):
         # NanumSquare 에 '›'(U+203A) 글리프가 없어 공백으로 렌더된다 — '/' 사용
         return "  /  ".join(crumbs)
 
-    # ── 폰 공유 QR ────────────────────────────────────────────
+    # ── 폰 공유 QR (① WiFi 연결 → ② 스캔해 받기) ─────────────
+    def _qr_step(self, caption_text):
+        """QR 한 단계 (캡션 + QR 그림 + 아래 설명). (블록, 이미지, 설명) 반환."""
+        cap = QLabel(caption_text)
+        cap.setObjectName("StatName")
+        cap.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        cap.setWordWrap(True)
+        img = QLabel()
+        img.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sub = QLabel()
+        sub.setObjectName("Hint")
+        sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sub.setWordWrap(True)
+        sub.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        block = QWidget()
+        v = QVBoxLayout(block)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(4)
+        v.addWidget(cap)
+        v.addWidget(img)
+        v.addWidget(sub)
+        return block, img, sub
+
     def _qr_panel(self):
-        """A4 지면 오른쪽 여백에 두는 QR 카드 (네트워크 있을 때만 보인다)."""
-        caption = QLabel("폰으로 스캔해 받기")
-        caption.setObjectName("StatName")
-        caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.qr_image = QLabel()
-        self.qr_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.qr_url = QLabel()
-        self.qr_url.setObjectName("Hint")
-        self.qr_url.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.qr_url.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
+        """A4 지면 오른쪽 여백의 폰 공유 카드.
+
+        ① 폰을 단말 WiFi 에 연결(WiFi QR) → ② 성적서 다운로드(주소 QR).
+        AP(bdt-share)가 떠 있으면 두 단계, 사무실 WiFi 등에선 ②만 보인다.
+        """
+        self._wifi_block, self.wifi_qr, self.wifi_sub = self._qr_step(
+            "① 폰을 이 WiFi 에 연결")
+        self._url_block, self.url_qr, self.url_sub = self._qr_step(
+            "② 스캔해 성적서 받기")
 
         self.qr_panel = QFrame()
         self.qr_panel.setObjectName("Card")
-        self.qr_panel.setFixedWidth(220)
+        self.qr_panel.setFixedWidth(210)
         lay = QVBoxLayout(self.qr_panel)
-        lay.setContentsMargins(16, 18, 16, 18)
-        lay.setSpacing(10)
+        lay.setContentsMargins(14, 16, 14, 16)
+        lay.setSpacing(12)
         lay.addStretch(1)
-        lay.addWidget(caption)
-        lay.addWidget(self.qr_image)
-        lay.addWidget(self.qr_url)
+        lay.addWidget(self._wifi_block)
+        lay.addWidget(self._url_block)
         lay.addStretch(1)
         self.qr_panel.setVisible(False)
-        self._qr_url_shown = None
+        self._wifi_shown = None
+        self._url_shown = None
         return self.qr_panel
 
+    def _set_qr(self, img_label, sub_label, payload, sub_text, size=120):
+        pixmap = _qr_pixmap(payload, size)
+        if pixmap is None:
+            img_label.setText("(QR 없음)")   # segno 미설치 폴백
+        else:
+            img_label.setPixmap(pixmap)
+        sub_label.setText(sub_text)
+
     def _refresh_qr(self):
-        """네트워크가 있으면 서버 주소 QR 을 보여주고, 없으면 패널을 숨긴다."""
+        """AP·네트워크 상태에 맞춰 공유 QR 을 갱신한다."""
         from bdt import web
         url = web.base_url()
-        if not url:
+        if not url:                       # 네트워크·AP 둘 다 없음
             self.qr_panel.setVisible(False)
-            self._qr_url_shown = None
+            self._wifi_shown = self._url_shown = None
             return
-        if url != self._qr_url_shown:   # IP 바뀌었을 때만 다시 그린다
-            pixmap = _qr_pixmap(url)
-            if pixmap is None:
-                # segno 가 없으면 QR 없이 주소만 안내한다
-                self.qr_image.setText("주소로 접속:")
-            else:
-                self.qr_image.setPixmap(pixmap)
-            self.qr_url.setText(url.replace("http://", "").rstrip("/"))
-            self._qr_url_shown = url
+
+        # ① WiFi 접속 QR — AP(bdt-share)가 떠 있을 때만
+        wifi = web.wifi_qr_payload()
+        cred = web.ap_credentials() if wifi else None
+        if wifi and cred:
+            self._wifi_block.setVisible(True)
+            if wifi != self._wifi_shown:
+                self._set_qr(self.wifi_qr, self.wifi_sub, wifi,
+                             f"{cred[0]}\n비밀번호 {cred[1]}")
+                self._wifi_shown = wifi
+        else:
+            self._wifi_block.setVisible(False)
+            self._wifi_shown = None
+
+        # ② 다운로드 주소 QR
+        if url != self._url_shown:
+            self._set_qr(self.url_qr, self.url_sub, url,
+                         url.replace("http://", "").rstrip("/"))
+            self._url_shown = url
         self.qr_panel.setVisible(True)
 
     # ── USB 복사 ──────────────────────────────────────────────
