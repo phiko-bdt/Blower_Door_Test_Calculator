@@ -118,9 +118,6 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
     convergence_time = 0
     pressure_threshold = target * tolerance_percent / 100.0
     duration = hold_seconds
-    # duty 수렴 조건
-    window = []
-    window_size = 50
 
     # 실패 조건
     failure_time = 0
@@ -135,8 +132,6 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
 
     while True:
         cancel_check()
-        # 제어 시작 시간
-        time_start = time.time()
         # PID 계산
         control = pid(current)
         # duty 업데이트 및 상하한 설정
@@ -190,17 +185,8 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
         # 압력 값 측정 (PID 입력) — PID 에는 원시값을 준다 (제어는 지연 없이
         # 실제 압력을 봐야 한다). 밴드 판정은 위 대기 루프의 이동평균이 이미 했다.
         current = abs(hardware.pressure_read(average_time, test=test))
-        # duty의 이동 평균 계산
-        window.append(duty)
-        if len(window) > window_size:
-            window = window[1:]
-
-        duty_avg = sum(window)/len(window)
-
         # 압력 오차
         error_pressure = abs(target - current)
-        # duty 오차 # 사용하지 않음
-        error_duty = abs(duty_avg - duty)
         # 이 측정점도 이동평균에 넣어 그린다 (표시선이 튀지 않게)
         notify_point(duty_real, smooth(current))
 

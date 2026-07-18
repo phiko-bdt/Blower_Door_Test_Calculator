@@ -721,6 +721,13 @@ class BackgroundTask(QThread):
         만들지 않는다. 화면에서만 못 보여준다는 것을 ReportPage 가 알린다.
         """
         import subprocess as sub
+        # 지난 시험의 렌더를 먼저 지운다. 안 지우면 이번 렌더가 실패했을 때
+        # ReportPage 가 옛 이미지를 그대로 띄워 — PDF·보관본은 이번 건인데
+        # 화면엔 지난 현장 성적서가 뜬다. calculation() 이 낡은 산출물을 먼저
+        # 지우는 것과 같은 이유. 지워두면 실패 시 ReportPage 가 '표시 못 함'
+        # 안내로 떨어진다 (빈 이미지).
+        if os.path.exists(paths.REPORT_PNG):
+            os.remove(paths.REPORT_PNG)
         pdftoppm = shutil.which("pdftoppm")
         if not pdftoppm:
             self.report("⚠ pdftoppm 이 없어 성적서를 화면에 띄울 수 없습니다 "
