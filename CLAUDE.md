@@ -66,6 +66,21 @@
   - 상한 이내면 → `_find_upper_duty` 로 상한을 넘지 않는 가장 높은 팬 세기를
     실측 탐색해 거기서부터 최저 지점까지 훑는다. **최대 duty 로 올려 훑지 말 것**
     — 압력이 이미 목표를 넘었는데 팬을 더 돌리는 정반대 처리다 (실제 있던 버그).
+- **성적서는 앱 안에서 보여준다** (외부 뷰어 금지). `report.pdf` 를 pdftoppm
+  으로 이미지 렌더해 `ReportPage` 가 띄운다. 전체화면 단말에서 남의 창(evince)이
+  위를 덮으면 작업자가 앱으로 못 돌아온다. 렌더는 reporting 작업이 백그라운드에
+  미리 해 둔다. **성적서는 시험마다 바탕화면 `결과보고서/<연월일시>/` 에 사본을
+  남긴다** — `report.pdf` 는 다음 시험이 덮어쓰므로. 파일명은 시각·시험 종류·
+  체적(`202607171943_감압+가압_500㎥.pdf`). `paths.REPORTS_DIR` 은 정의만 있고
+  아무도 안 써서 실제로 지난 성적서가 사라지던 걸 이 보관함이 메운다.
+- **확인·알림 창은 `widgets.confirm`/`alert` (앱 자체 Dialog) 로만 띄운다.**
+  QMessageBox 는 말풍선 아이콘·영문 Yes/No·창틀이 앱과 따로 놀아 전부 걷어냈다.
+  버튼 문구는 '예/아니오'가 아니라 동작('종료'·'시험 중단'), 되돌릴 수 없는
+  동작은 `danger=True`. 리뷰가 QMessageBox 를 다시 넣으려 하면 막을 것.
+- **수렴 판정은 대기 루프가 실시간으로 센다** (`control.get_duty`). 예전엔
+  루프당 한 번(약 5.5초 간격) 스냅샷으로만 판정해, delay 5초 동안 밴드를
+  들락거려도 카운트가 쌓여 '10초 연속 유지'가 사실은 스냅샷 두 개였다. 이제
+  대기 중 읽는 값마다 밴드를 보고 세며 벗어나면 0 으로 리셋한다.
 - **리버서블 팬 지원은 의도적으로 남긴 죽은 코드다 — 지우지 말 것.**
   `control.duty_transformation` 의 `min>max` 역방향 분기와
   `fan_coefficients.json` 의 forward/reverse 계수 분리가 해당한다. 현재 팬
@@ -76,9 +91,11 @@
 ## 검증 방법
 
 - **회귀 스모크 (수정 후 항상)**: `QT_QPA_PLATFORM=offscreen python3 tests/smoke.py`
-  — 하드웨어 모킹 종단 15검사, 약 1분, 전부 통과 시 종료코드 0.
-  실데이터(conditions.json·raw·settings.json)는 백업 후 복원하며, 스모크가
-  새로 만든 파일은 지운다 (스모크용 값이 실제 설정으로 굳지 않게).
+  — 하드웨어 모킹 종단 26검사, 약 1분, 전부 통과 시 종료코드 0.
+  실데이터(conditions.json·raw·settings.json·fan_coefficients.json)와
+  산출물 폴더(measurements/·conditions/·graphs/…)는 백업 후 복원하며, 스모크가
+  새로 만든 파일은 지운다 (스모크용 가짜 측정이 실측 기록과 섞이지 않게).
+  성적서 보관함도 가짜 바탕화면(임시 폴더)으로 돌려 실제 바탕화면을 안 건든다.
 - 문법·임포트: `python3 -m py_compile bdt/**/*.py` + `python3 -c "import bdt.flow"`
 - GUI 캡처(하드웨어 미접촉): `QT_QPA_PLATFORM=offscreen` + hardware.pressure_read/
   duty_set 모킹 + `widget.grab().save(...)`. QChart 애니메이션은 실제 이벤트 루프
