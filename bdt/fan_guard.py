@@ -23,8 +23,8 @@ from bdt import hardware
 from bdt.config import TEST_MODE
 
 # 확인 주기. 짧을수록 비정상 종료 후 팬이 도는 시간이 줄지만, 그만큼 자주
-# 깨어난다. duty 확인·쓰기는 가벼워(수 ms) 2초로 촘촘히 둔다.
-CHECK_INTERVAL = 2.0
+# 깨어난다. duty 확인·쓰기는 가벼워(수 ms) 1초로 촘촘히 둔다.
+CHECK_INTERVAL = 1.0
 
 
 def app_running():

@@ -45,7 +45,7 @@
   .desktop 의 후행 `python3 -m bdt.fan_stop`(앱 크래시 대비) →
   **bdt-fan-guard.service(상시 감시)**. 앞 셋은 특정 시점에 한 번씩만 duty 0 을
   거는데, 앱이 측정 중 SIGKILL 로 죽거나 래퍼 없이 직접 실행한 앱이 비정상
-  종료하면 팬이 도는 채 남을 수 있다. 감시는 2초마다 `bdt.fan_guard.app_running`
+  종료하면 팬이 도는 채 남을 수 있다. 감시는 1초마다 `bdt.fan_guard.app_running`
   으로 `-m bdt` 프로세스 유무를 확인해(정확 매칭 — fan_stop·fan_guard 자신은
   앱으로 오인 안 함), **앱이 없으면 duty 0 을 강제한다.** 앱이 있으면 손대지
   않는다(측정 중 팬이 도는 게 정상). 설치: `sudo cp bdt-fan-guard.service
