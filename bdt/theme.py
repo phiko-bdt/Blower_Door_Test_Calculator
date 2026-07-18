@@ -128,6 +128,12 @@ QLabel#Hint {{
     font-size: 13px;
     color: {COLOR_SUB};
 }}
+/* 성적서 저장 위치 경로 — 이 화면의 핵심 정보라 진한 잉크로 또렷하게 */
+QLabel#SavedPath {{
+    font-size: 15px;
+    font-weight: bold;
+    color: {COLOR_INK};
+}}
 /* 스탯 타일 — 성적서의 KPI 카드와 같은 구성(작은 accent 이름 + 큰 값 + 단위) */
 QLabel#StatName {{
     font-size: 11px;

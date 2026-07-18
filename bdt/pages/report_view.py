@@ -66,18 +66,28 @@ class ReportPage(QWidget):
         self.zoom_button.setMinimumWidth(150)
         self.zoom_button.clicked.connect(self._toggle_zoom)
 
+        # 저장 위치 — 작업자가 성적서를 어디서 찾는지가 이 화면의 핵심 정보다.
+        # 예전엔 회색 힌트 한 줄이라 눈에 안 띄었다. 캡션(accent) + 경로(진한
+        # 잉크)로 두 줄로 또렷하게 보여준다.
+        saved_caption = QLabel("성적서 저장 위치")
+        saved_caption.setObjectName("StatName")
         self.saved_label = QLabel(self._where_saved())
-        self.saved_label.setObjectName("Hint")
+        self.saved_label.setObjectName("SavedPath")
+        self.saved_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        saved_block = QVBoxLayout()
+        saved_block.setSpacing(1)
+        saved_block.addWidget(saved_caption)
+        saved_block.addWidget(self.saved_label)
 
         restart_button = QPushButton("새 시험 시작")
         restart_button.setMinimumWidth(180)
         restart_button.clicked.connect(self.restart.emit)
 
         bottom = QHBoxLayout()
-        bottom.setSpacing(12)
+        bottom.setSpacing(16)
         bottom.addWidget(self.zoom_button)
-        bottom.addSpacing(8)
-        bottom.addWidget(self.saved_label)
+        bottom.addLayout(saved_block)
         bottom.addStretch(1)
         bottom.addWidget(restart_button)
         root.addLayout(bottom)
@@ -95,15 +105,19 @@ class ReportPage(QWidget):
         """성적서를 어디서 찾는지 — 바탕화면 보관함 기준으로 알린다.
 
         작업자가 찾는 건 저장소 안의 report.pdf 가 아니라 바탕화면의 사본이다
-        (report.pdf 는 다음 시험이 덮어쓴다).
+        (report.pdf 는 다음 시험이 덮어쓴다). 폴더 구분자를 ' › ' 로 바꿔
+        '바탕화면 › 결과보고서 › …' 처럼 어디를 열어야 하는지 바로 읽히게 한다.
         """
         if not self._archive_path:
-            return f"PDF 저장됨 · {self._pdf_path}"
+            # 보관 실패 폴백 — 최소한 PDF 원본 자리라도 알린다
+            return self._pdf_path
         try:
-            shown = os.path.relpath(self._archive_path, paths.DESKTOP_DIR)
+            rel = os.path.relpath(self._archive_path, paths.DESKTOP_DIR)
+            crumbs = ["바탕화면"] + rel.split(os.sep)
         except ValueError:
-            shown = self._archive_path
-        return f"바탕화면에 보관됨 · {shown}"
+            crumbs = self._archive_path.split(os.sep)
+        # NanumSquare 에 '›'(U+203A) 글리프가 없어 공백으로 렌더된다 — '/' 사용
+        return "  /  ".join(crumbs)
 
     # ── 확대 ──────────────────────────────────────────────────
     def _toggle_zoom(self):
