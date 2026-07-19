@@ -19,7 +19,7 @@ import html
 import subprocess
 from datetime import datetime
 
-from flask import (Flask, send_from_directory, request, redirect,
+from flask import (Flask, send_from_directory, redirect,
                    abort, Response)
 
 from bdt import paths
@@ -30,9 +30,6 @@ PORT = 8080
 # 인터넷용으로 따로 둔다. 설정: nmcli con(bdt-share), ipv4.method shared →
 # 10.42.0.1 + DHCP.
 AP_CON = "bdt-share"
-# 폰에서 올린 파일을 받는 곳 (바탕화면). 성적서 보관함과 나란히 둔다.
-UPLOAD_DIR = os.path.join(paths.DESKTOP_DIR, "받은파일")
-
 app = Flask(__name__)
 # 성적서 PDF 는 작아도 폰 사진 업로드는 클 수 있어 여유를 둔다 (25 MB).
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
@@ -178,9 +175,12 @@ def index():
         when = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M") if mtime else ""
         href = "/download/" + rel.replace(os.sep, "/")
         rows.append(
-            f'<li><a href="{html.escape(href)}">{html.escape(name)}</a>'
-            f'<span class="when">{when}</span></li>')
-    listing = "\n".join(rows) or '<li class="empty">아직 발행된 성적서가 없습니다.</li>'
+            f'<li><a href="{html.escape(href)}">'
+            f'<span><span class="name">{html.escape(name)}</span>'
+            f'<div class="when">{when}</div></span>'
+            f'<span class="get">받기</span></a></li>')
+    listing = ("\n".join(rows)
+               or '<li class="empty">아직 발행된 성적서가 없습니다.</li>')
     return Response(_PAGE.format(count=len(rows), listing=listing), mimetype="text/html")
 
 
@@ -195,24 +195,6 @@ def download(relpath):
     return send_from_directory(root, relpath, as_attachment=True)
 
 
-@app.route("/upload", methods=["POST"])
-def upload():
-    f = request.files.get("file")
-    if not f or not f.filename:
-        return redirect("/")
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    # 파일명에서 경로 요소를 떼어내 보관 폴더 밖으로 못 나가게 한다.
-    safe = paths._safe_name(os.path.basename(f.filename)) or "받은파일"
-    dest = os.path.join(UPLOAD_DIR, safe)
-    stem, ext = os.path.splitext(dest)
-    n = 2
-    while os.path.exists(dest):
-        dest = f"{stem}({n}){ext}"
-        n += 1
-    f.save(dest)
-    return redirect("/")
-
-
 _PAGE = """<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -224,32 +206,30 @@ _PAGE = """<!doctype html>
   header h1 {{ margin: 0; font-size: 18px; }}
   header p {{ margin: 4px 0 0; font-size: 13px; opacity: .85; }}
   main {{ max-width: 720px; margin: 0 auto; padding: 16px; }}
+  .caption {{ color: #5b6672; font-size: 13px; margin: 4px 2px 10px; }}
   ul {{ list-style: none; padding: 0; margin: 0; }}
-  li {{ background: #fff; border: 1px solid #e4e8ee; border-radius: 8px;
-        margin-bottom: 8px; padding: 14px 16px; display: flex;
-        justify-content: space-between; align-items: center; }}
-  li a {{ color: #1f5fa8; text-decoration: none; font-weight: bold;
-          word-break: break-all; }}
-  .when {{ color: #5b6672; font-size: 12px; margin-left: 12px;
-           white-space: nowrap; }}
-  .empty {{ color: #5b6672; justify-content: center; }}
-  form {{ background: #fff; border: 1px dashed #ccd3dc; border-radius: 8px;
-          padding: 16px; margin-top: 16px; text-align: center; }}
-  button {{ background: #1f5fa8; color: #fff; border: none; border-radius: 8px;
-            padding: 10px 20px; font-size: 15px; font-weight: bold; }}
+  /* 각 줄이 통째로 다운로드 링크 — 어디를 눌러도 받아진다 */
+  li a {{ display: flex; justify-content: space-between; align-items: center;
+          background: #fff; border: 1px solid #e4e8ee; border-radius: 10px;
+          margin-bottom: 10px; padding: 16px; text-decoration: none;
+          color: #1c2430; }}
+  li a:active {{ background: #eef4fb; }}
+  .name {{ font-weight: bold; color: #1c2430; word-break: break-all; }}
+  .when {{ color: #5b6672; font-size: 12px; margin-top: 3px; }}
+  .get {{ flex: none; margin-left: 12px; background: #1f5fa8; color: #fff;
+          font-size: 14px; font-weight: bold; border-radius: 8px;
+          padding: 9px 16px; white-space: nowrap; }}
+  .empty {{ background: #fff; border: 1px solid #e4e8ee; border-radius: 10px;
+            padding: 24px; text-align: center; color: #5b6672; }}
 </style></head>
 <body>
 <header><h1>기밀성능 시험 성적서</h1>
-<p>성적서 {count}건 · 아래에서 내려받으세요</p></header>
+<p>성적서 {count}건</p></header>
 <main>
+<div class="caption">받을 성적서를 누르세요 ↓</div>
 <ul>
 {listing}
 </ul>
-<form action="/upload" method="post" enctype="multipart/form-data">
-  <p>파일 보내기 (사진·서명 등 → 단말 바탕화면 '받은파일')</p>
-  <input type="file" name="file" required>
-  <button type="submit">올리기</button>
-</form>
 </main>
 </body></html>
 """
