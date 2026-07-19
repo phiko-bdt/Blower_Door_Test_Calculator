@@ -392,6 +392,24 @@ QWidget#Keyboard QPushButton#KeyDone {{
     background-color: {COLOR_ACCENT}; color: #ffffff; font-size: 16px;
     font-weight: bold; min-width: 100px;
 }}
+/* 토스트 — 잠깐 떴다 사라지는 알림. accent 는 '지금 봐야 할 곳'에만 쓰는데
+   토스트가 바로 그 자리라 accent 로 채운다 (작은 면적이라 큰 채색 금지 원칙에
+   어긋나지 않는다). */
+QFrame#Toast {{
+    background-color: {COLOR_ACCENT};
+    border-radius: 10px;
+}}
+QLabel#ToastTitle {{
+    font-size: 15px;
+    font-weight: bold;
+    color: #ffffff;
+    background: transparent;
+}}
+QLabel#ToastBody {{
+    font-size: 13px;
+    color: {COLOR_ACCENT_SOFT};
+    background: transparent;
+}}
 /* 스크롤바 — 기본 OS 스크롤바는 투박해 앱과 안 어울린다. 얇고 둥근 손잡이만
    두고 화살표·트랙을 없애 성적서 같은 플랫한 인상을 맞춘다 (입력·설정·성적서
    세 스크롤 영역 공통). */

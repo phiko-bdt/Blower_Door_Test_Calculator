@@ -28,7 +28,7 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QPixmap
 
 from bdt import paths
-from bdt.widgets import alert
+from bdt.widgets import alert, toast
 
 
 def _qr_pixmap(url, size=150):
@@ -132,6 +132,8 @@ class ReportPage(QWidget):
 
         # PDF 가 없으면(렌더 실패해도 PDF 는 있어야 정상) USB 복사도 막는다
         self._can_copy = os.path.exists(self._pdf_path)
+        # USB 가 '새로 꽂히는' 순간에만 안내 토스트를 띄우려고 직전 상태를 든다
+        self._usb_present = False
         # USB·네트워크 QR 을 2초마다 갱신 (화면 떠 있는 동안 꽂거나 연결해도
         # 반영되게). 한 타이머로 둘 다 본다.
         self._poll = QTimer(self)
@@ -310,9 +312,16 @@ class ReportPage(QWidget):
         self._refresh_qr()
 
     def _refresh_usb(self):
-        """USB 유무를 확인해 복사 버튼을 켜고 끈다."""
+        """USB 유무를 확인해 복사 버튼을 켜고 끈다. 새로 꽂히면 안내 토스트."""
         self._usb = paths.usb_mounts() if self._can_copy else []
-        self.usb_button.setVisible(bool(self._usb))
+        present = bool(self._usb)
+        # 없다가 새로 감지된 순간에만 한 번 알린다. 화면이 뜨기 전(__init__ 중
+        # 첫 확인)이나 폴링마다 반복해 뜨지 않도록 isVisible 과 직전 상태로 건다.
+        if present and not self._usb_present and self.isVisible():
+            toast(self, "USB 연결 감지됨",
+                  "복사 버튼을 누르면 성적서가 복사됩니다.")
+        self._usb_present = present
+        self.usb_button.setVisible(present)
 
     def _copy_dest_name(self):
         """USB 에 남길 파일 이름 — 보관본과 같은 뜻있는 이름."""

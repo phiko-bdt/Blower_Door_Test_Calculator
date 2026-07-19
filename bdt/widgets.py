@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QDialog,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 
 from bdt.theme import STANDARD_NAME, STANDARD_NOTE
 
@@ -86,6 +86,58 @@ def confirm(parent, title, text, ok_text="확인", cancel_text="취소",
 def alert(parent, title, text):
     """알리기만 한다 (확인 버튼 하나)."""
     Dialog(parent, title, text, ok_text="확인").exec()
+
+
+class Toast(QFrame):
+    """화면 위에 잠깐 떴다 스스로 사라지는 알림. 모달이 아니다.
+
+    확인이 필요 없는 가벼운 안내에 쓴다(예: USB 감지). Dialog 는 모달이라
+    작업자가 눌러 닫아야 하지만, 토스트는 정해진 시간 뒤 스스로 없어진다.
+    포커스·클릭을 뺏지 않아 화면 키보드나 밑의 버튼을 방해하지 않는다.
+    """
+
+    def __init__(self, parent, title, body, duration_ms=4500):
+        super().__init__(parent)
+        self.setObjectName("Toast")
+        # 클릭이 밑의 위젯(복사 버튼 등)으로 통과하게 둔다
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+
+        heading = QLabel(title)
+        heading.setObjectName("ToastTitle")
+        text = QLabel(body)
+        text.setObjectName("ToastBody")
+        text.setWordWrap(True)
+
+        inner = QVBoxLayout(self)
+        inner.setContentsMargins(20, 13, 20, 13)
+        inner.setSpacing(3)
+        inner.addWidget(heading)
+        inner.addWidget(text)
+        self.setMaximumWidth(460)
+
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.timeout.connect(self.deleteLater)
+        self._duration = duration_ms
+
+    def popup(self):
+        """부모 위쪽 가운데에 띄우고 정해진 시간 뒤 스스로 사라진다."""
+        parent = self.parentWidget()
+        if parent is None:
+            return
+        self.adjustSize()
+        x = max(0, (parent.width() - self.width()) // 2)
+        self.move(x, 24)
+        self.show()
+        self.raise_()
+        self._timer.start(self._duration)
+
+
+def toast(parent, title, body, duration_ms=4500):
+    """가벼운 알림을 띄운다 (자동 소멸). 만든 Toast 를 돌려준다."""
+    t = Toast(parent, title, body, duration_ms)
+    t.popup()
+    return t
 
 
 def _apply_state(widget, state):
