@@ -28,6 +28,14 @@
   `calculation.py` 가 직접 읽으므로 파일을 옮기지 않는다 (기존 데이터·스크립트 호환).
 - `bdt/tasks.py` — QThread 작업. finished 는 성공/실패 무관하게 항상 오므로
   절대 finished 만으로 다음 단계로 넘어가지 말 것 (error/cancelled 로 판단).
+- `bdt/keyboard.py` — 온스크린 키보드. **Qt 가상 키보드(qtvirtualkeyboard)는
+  QtWidgets 앱에 자동 팝업이 안 떠서** 앱이 직접 그린다. 한글은 두벌식
+  오토마타(HangulAutomaton)로 초·중·종성을 조합(겹모음·겹받침·종성 이월 포함).
+  QLineEdit 포커스 시 MainWindow(flow.py)가 focusChanged 로 띄우고, 입력창의
+  `property("numeric")` 이 참이면 한 줄 숫자 키패드, 아니면 한글/영문/기호
+  키보드(+오른쪽 텐키). 키는 NoFocus 라 입력창 포커스를 안 뺏는다. 하단
+  버튼줄이 키보드에 눌리지 않게 페이지 동작 버튼(저장 등)은 PageHeader 의
+  actions 로 헤더 오른쪽에 둔다.
 - `bdt/flow.py` — 단일창 + QStackedWidget 페이지 전환. show_page 가 이전 페이지를
   deleteLater 한다 (파괴된 위젯으로 가던 시그널은 Qt 가 자동 해제).
 - 시험 흐름: 조건 입력 → 준비(영기류 확인) → 목표 압력 조절(TargetingPage)
@@ -49,7 +57,8 @@
   -3174 Pa 같은 유령값의 원인이었다.
 - 팬 전원은 수동 공급. duty 0 은 항상 안전, **duty>0 은 실제 팬이 돌므로 주의**.
 - 안전장치 4중: config.txt 펌웨어 LOW → bdt-fan-stop.service(부팅) →
-  .desktop 의 후행 `python3 -m bdt.fan_stop`(앱 크래시 대비) →
+  앱 종료 후행 `python3 -m bdt.fan_stop`(autostart 재시작 루프의 매 반복 +
+  수동 실행용 .desktop, 앱 크래시 대비) →
   **bdt-fan-guard.service(상시 감시)**. 앞 셋은 특정 시점에 한 번씩만 duty 0 을
   거는데, 앱이 측정 중 SIGKILL 로 죽거나 래퍼 없이 직접 실행한 앱이 비정상
   종료하면 팬이 도는 채 남을 수 있다. 감시는 1초마다 `bdt.fan_guard.app_running`
@@ -83,11 +92,13 @@
 - **성적서 공유는 USB 복사 + 자체 핫스팟(AP) 웹**(둘 다 성적서 화면에서).
   USB 복사 버튼은 `/media/<user>/` 에 마운트된 USB 가 있을 때만 뜬다
   (`paths.usb_mounts`, 2초 폴링).
-  - **웹 공유 구조 = 단말이 AP**: 전용 USB WiFi(**wlan1**, Realtek rtl8192cu)로
-    상시 AP `BlowerDoor-Test`(10.42.0.1)를 방송하고, 폰이 거기 붙어 받는다.
-    내장 wlan0 은 인터넷용으로 따로 둔다(동시 구동 — AP 켜도 인터넷 안 끊김).
-    **AP 는 반드시 wlan1 에 고정**(nmcli `connection.interface-name wlan1`)해야
-    한다 — 안 그러면 NM 이 wlan0 에 AP 를 올려 인터넷·원격이 끊긴다.
+  - **웹 공유 구조 = 단말이 AP**: 상시 AP `BlowerDoor-Test`(10.42.0.1)를
+    방송하고, 폰이 거기 붙어 받는다. AP 를 올리는 인터페이스는 구성에 따라
+    다르다(아래 '납품 vs 개발' 참조 — **개발 = wlan1, 납품 = wlan0**).
+    현재(개발) 구성: 전용 USB WiFi(**wlan1**, Realtek rtl8192cu)가 AP, 내장
+    wlan0 은 인터넷용(동시 구동 — AP 켜도 인터넷 안 끊김). 개발 중 **AP 는
+    반드시 wlan1 에 고정**(nmcli `connection.interface-name wlan1`)해야 한다 —
+    안 그러면 NM 이 wlan0 에 AP 를 올려 인터넷·원격이 끊긴다.
   - `bdt.web`(Flask, bdt-web.service, 포트 8080)이 바탕화면 `결과보고서` 를
     서빙. 성적서 화면 오른쪽에 **2단계 QR**: ① WiFi 접속 QR(`web.wifi_qr_payload`,
     SSID·비번을 NM 에서 읽음) → ② 다운로드 주소 QR(`web.base_url` 이 **AP IP

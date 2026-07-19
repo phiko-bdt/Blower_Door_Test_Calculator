@@ -18,9 +18,11 @@
 # 옮긴 뒤 실행할 것.
 set -e
 
+# 기본값은 실기기·매뉴얼·화면 QR 안내와 같은 값이어야 한다 — 납품 때 인자
+# 없이 `./setup-hotspot.sh wlan0` 로 재실행해도 SSID·비번이 어긋나지 않게.
 IFACE="${1:-wlan0}"
-SSID="${2:-BlowerDoor}"
-PASSWORD="${3:-blowerdoor}"   # WPA 최소 8자
+SSID="${2:-BlowerDoor-Test}"
+PASSWORD="${3:-blowerdoor123}"   # WPA 최소 8자
 CON="bdt-share"
 
 echo "AP 설정: 인터페이스=$IFACE  SSID=$SSID"

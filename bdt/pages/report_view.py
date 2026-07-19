@@ -257,49 +257,62 @@ class ReportPage(QWidget):
         sub_label.setText(sub_text)
 
     def _refresh_qr(self):
-        """AP·네트워크 상태에 맞춰 공유 QR 을 갱신한다."""
+        """AP·네트워크 상태에 맞춰 공유 QR 을 갱신한다.
+
+        2초마다 GUI 스레드에서 돌므로 nmcli 서브프로세스를 아껴야 한다 —
+        NetworkManager 가 느린 순간엔 호출당 수 초씩 막혀 화면이 버벅인다.
+        정상 상태(변화 없음)에선 AP 유무 확인(ap_ip) 한 번만 부르고,
+        자격증명·SSID 조회는 QR 을 실제로 새로 그릴 때만 한다.
+        """
         from bdt import web
-        url = web.base_url()
-        if not url:                       # 네트워크·AP 둘 다 없음
+        # AP(bdt-share)가 '실제로 떠 있는지'는 IP 유무로 본다. 연결 설정만 있고
+        # 안 떠 있으면 접속 QR 을 보여줘선 안 된다 — 없는 망에 붙으라고
+        # 안내하는 꼴이 된다.
+        ap = web.ap_ip()                    # 폴링당 유일한 상시 nmcli 호출
+        ip = ap or web.lan_ip()             # lan_ip 은 소켓 조회라 싸다
+        if not ip:                          # 네트워크·AP 둘 다 없음
             self.qr_panel.setVisible(False)
             self._wifi_shown = self._url_shown = None
             return
+        ap_up = ap is not None
+        url = f"http://{ip}:{web.PORT}/"
 
-        # AP(bdt-share)가 '실제로 떠 있는지'는 IP 유무로 본다. 연결 설정만 있고
-        # 안 떠 있으면(ap_ip None) 접속 QR 을 보여줘선 안 된다 — 없는 망에
-        # 붙으라고 안내하는 꼴이 된다.
-        ap_up = web.ap_ip() is not None
-
-        # ① WiFi 접속 QR — AP 가 실제로 떠 있을 때만
-        wifi = web.wifi_qr_payload() if ap_up else None
-        cred = web.ap_credentials() if wifi else None
-        if wifi and cred:
-            self._wifi_block.setVisible(True)
-            if wifi != self._wifi_shown:
-                # 스캔하면 WiFi 자동 연결(비번 QR 에 박힘) → 목록 자동 열림.
-                # 아래 SSID·비번은 QR 이 안 될 때 손으로 연결하는 예비 정보.
-                self._set_qr(self.wifi_qr, self.wifi_sub, wifi,
-                             f"WiFi 연결 후 목록 자동 열림\n"
-                             f"(수동: {cred[0]} / {cred[1]})")
-                self._wifi_shown = wifi
+        # ① WiFi 접속 QR — AP 가 실제로 떠 있을 때만. 자격증명(nmcli)은 QR 이
+        # 아직 안 그려졌을 때만 읽는다 (SSID·비번은 세션 중 바뀌지 않는다 —
+        # 바꾸는 경로는 setup-hotspot.sh 뿐이고 그때 AP 가 재시작돼 여기로
+        # 다시 온다).
+        if ap_up:
+            if self._wifi_shown is None:
+                cred = web.ap_credentials()
+                wifi = web.wifi_qr_payload(cred)
+                if wifi and cred:
+                    # 스캔하면 WiFi 자동 연결(비번 QR 에 박힘) → 목록 자동 열림.
+                    # 아래 SSID·비번은 QR 이 안 될 때 손으로 연결하는 예비 정보.
+                    self._set_qr(self.wifi_qr, self.wifi_sub, wifi,
+                                 f"WiFi 연결 후 목록 자동 열림\n"
+                                 f"(수동: {cred[0]} / {cred[1]})")
+                    self._wifi_shown = wifi
+            self._wifi_block.setVisible(self._wifi_shown is not None)
         else:
             self._wifi_block.setVisible(False)
             self._wifi_shown = None
 
-        # ② 다운로드 주소 QR — 캡션은 상황에 따라 다르다.
-        #   AP 있음: 폰이 AP 에 붙은 뒤 ① 자동 열림이 안 될 때의 폴백.
-        #   AP 없음: 폰이 '이미 같은 WiFi 에 있어야' 열린다 — 그렇지 않으면
-        #            스캔해도 접속이 안 되므로 전제 조건을 분명히 알린다.
-        if ap_up:
-            self.url_cap.setText("② 1번으로 목록이 안 열릴 때만")
-        else:
-            # 폰이 어느 망에 붙어야 하는지 실제 SSID 로 알린다
-            ssid = web.lan_ssid()
-            if ssid:
-                self.url_cap.setText(f"'{ssid}' WiFi 의 폰에서만")
-            else:
-                self.url_cap.setText("같은 WiFi 에 연결된 폰에서만")
+        # ② 다운로드 주소 QR — 주소가 바뀔 때만(첫 표시·망 전환) 다시 그린다.
+        # 캡션도 이때만 정한다: ap_up 이 바뀌면 IP(10.42.0.1 ↔ LAN)가 바뀌어
+        # 반드시 여기로 들어오므로 폴링마다 SSID(nmcli)를 조회할 필요가 없다.
         if url != self._url_shown:
+            #   AP 있음: 폰이 AP 에 붙은 뒤 ① 자동 열림이 안 될 때의 폴백.
+            #   AP 없음: 폰이 '이미 같은 WiFi 에 있어야' 열린다 — 그렇지 않으면
+            #            스캔해도 접속이 안 되므로 전제 조건을 분명히 알린다.
+            if ap_up:
+                self.url_cap.setText("② 1번으로 목록이 안 열릴 때만")
+            else:
+                # 폰이 어느 망에 붙어야 하는지 실제 SSID 로 알린다
+                ssid = web.lan_ssid()
+                if ssid:
+                    self.url_cap.setText(f"'{ssid}' WiFi 의 폰에서만")
+                else:
+                    self.url_cap.setText("같은 WiFi 에 연결된 폰에서만")
             self._set_qr(self.url_qr, self.url_sub, url,
                          url.replace("http://", "").rstrip("/"))
             self._url_shown = url

@@ -376,6 +376,63 @@ def main():
               ", ".join(f"{n}={h}" for n, h in tall.items()) or
               f"최대 {max(p.minimumSizeHint().height() for p in pages.values())}")
 
+        # ── 4-3. 세션 신규 로직 (키보드·팬 수량·팬 감시) ─────────
+        print("4-3. 키보드·입력·감시 로직")
+        from bdt.keyboard import HangulAutomaton
+
+        def type_jamo(seq):
+            """자모열 → 완성 문자열 (키보드 _feed_hangul 과 같은 규칙)."""
+            auto = HangulAutomaton()
+            out = []
+            for j in seq:
+                action, arg = auto.add(j)
+                if action == "update":
+                    out[-1:] = [arg]
+                elif action == "new":
+                    out.append(arg)
+                elif action == "split":
+                    out[-1:] = list(arg)
+                else:
+                    out.append(j)
+            return "".join(out)
+
+        hangul_cases = [
+            ("ㄱㅏ", "가"), ("ㄱㅏㄴ", "간"), ("ㄱㅏㅂㅅ", "값"),
+            ("ㄱㅗㅏ", "과"), ("ㅎㅏㄴㄱㅡㄹ", "한글"),
+            ("ㄱㅏㄴㅏ", "가나"),           # 종성 이월 (split)
+            ("ㅇㅏㄴㄴㅕㅇ", "안녕"),
+            ("ㅎㅗㅇㄱㅣㄹㄷㅗㅇ", "홍길동"),
+        ]
+        bad = [(s, type_jamo(s), want) for s, want in hangul_cases
+               if type_jamo(s) != want]
+        check("한글 오토마타 조합", not bad,
+              ", ".join(f"{s}→{got}≠{want}" for s, got, want in bad)
+              or f"{len(hangul_cases)}케이스")
+
+        auto = HangulAutomaton()
+        for j in "ㄱㅏㅂㅅ":
+            auto.add(j)
+        action, arg = auto.backspace()      # 값 → 갑 (겹받침 분해)
+        check("한글 백스페이스 겹받침 분해",
+              action == "update" and arg == "갑", f"{action}/{arg}")
+
+        page_in = InputInitialValues()
+        check("팬 수량 체크박스 = 개수",
+              sum(cb.isChecked() for cb in page_in.fan_checks) == 0
+              and [cb.setChecked(True) for cb in page_in.fan_checks] is not None
+              and sum(cb.isChecked() for cb in page_in.fan_checks) == 2)
+        check("숫자 칸 numeric property",
+              bool(page_in.input_fields["interior volume"].property("numeric"))
+              and bool(page_in.input_fields["floor area"].property("numeric"))
+              and not page_in.input_fields["purpose"].property("numeric"))
+
+        from bdt.fan_guard import is_app_cmdline
+        check("팬 감시 앱 판정 — 정확 매칭",
+              is_app_cmdline(["python3", "-m", "bdt"])
+              and not is_app_cmdline(["python3", "-m", "bdt.fan_stop"])
+              and not is_app_cmdline(["python3", "-m", "bdt.fan_guard"])
+              and not is_app_cmdline(["python3", "app.py"]))
+
         # ── 5. 종료 시 워커 정리 ────────────────────────────────
         print("5. 창 닫기 정리")
         control.get_duty = slow_get_duty

@@ -27,14 +27,22 @@ from bdt.config import TEST_MODE
 CHECK_INTERVAL = 1.0
 
 
-def app_running():
-    """기밀성능 시험 앱(`python3 -m bdt`)이 실행 중이면 True.
+def is_app_cmdline(args):
+    """명령줄 인자가 기밀성능 시험 앱(`python3 -m bdt`)인지 판정한다.
 
-    /proc 의 각 프로세스 명령줄에서 `-m` 바로 다음 인자가 **정확히 "bdt"** 인지
-    본다. 이 감시 장치(`-m bdt.fan_guard`)나 부팅 정지(`-m bdt.fan_stop`)는
-    다음 인자가 "bdt.fan_guard"·"bdt.fan_stop" 이라 걸리지 않는다 — 부분
-    일치(pgrep -f "bdt")로는 자기 자신을 앱으로 오인해 영영 duty 0 을 안 건다.
+    `-m` 바로 다음 인자가 **정확히 "bdt"** 여야 한다. 이 감시 장치
+    (`-m bdt.fan_guard`)나 부팅 정지(`-m bdt.fan_stop`)는 다음 인자가
+    "bdt.fan_guard"·"bdt.fan_stop" 이라 걸리지 않는다 — 부분 일치
+    (pgrep -f "bdt")로는 자기 자신을 앱으로 오인해 영영 duty 0 을 안 건다.
     """
+    for i in range(len(args) - 1):
+        if args[i] == "-m" and args[i + 1] == "bdt":
+            return True
+    return False
+
+
+def app_running():
+    """기밀성능 시험 앱(`python3 -m bdt`)이 실행 중이면 True."""
     my_pid = str(os.getpid())
     for entry in os.listdir("/proc"):
         if not entry.isdigit() or entry == my_pid:
@@ -46,9 +54,8 @@ def app_running():
         except OSError:
             # 프로세스가 그 사이 사라졌거나 접근 불가 — 넘어간다
             continue
-        for i in range(len(args) - 1):
-            if args[i] == "-m" and args[i + 1] == "bdt":
-                return True
+        if is_app_cmdline(args):
+            return True
     return False
 
 

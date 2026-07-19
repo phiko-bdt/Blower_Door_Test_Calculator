@@ -104,13 +104,14 @@ def ap_credentials():
     return None
 
 
-def wifi_qr_payload():
+def wifi_qr_payload(cred=None):
     """폰이 스캔하면 AP 에 바로 접속되는 WiFi QR 문자열. 설정 없으면 None.
 
     형식 'WIFI:T:WPA;S:<ssid>;P:<pw>;;' — iOS·안드로이드 카메라가 인식한다.
     값 안의 특수문자(\\ ; , : ")는 백슬래시로 escape 한다 (WIFI QR 규격).
+    cred 를 주면 nmcli 를 다시 부르지 않는다 (호출부가 이미 읽어둔 경우).
     """
-    cred = ap_credentials()
+    cred = cred or ap_credentials()
     if not cred:
         return None
     def esc(v):
