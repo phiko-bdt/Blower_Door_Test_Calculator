@@ -364,4 +364,32 @@ QProgressBar::chunk {{
     background-color: {COLOR_ACCENT};
     border-radius: 3px;
 }}
+/* 온스크린 키보드 — 화면 아래 붙는 터치 키보드 */
+QWidget#Keyboard {{
+    background-color: {COLOR_LINE2};
+    border-top: 1px solid {COLOR_LINE};
+}}
+QWidget#Keyboard QPushButton {{
+    font-size: 20px;
+    font-weight: normal;
+    min-height: 52px;
+    padding: 0px;
+    color: {COLOR_INK};
+    background-color: {COLOR_SURFACE};
+    border: 1px solid {COLOR_LINE};
+    border-radius: 7px;
+}}
+QWidget#Keyboard QPushButton:pressed {{ background-color: {COLOR_ACCENT_SOFT}; }}
+QWidget#Keyboard QPushButton#KeyWide {{ min-width: 90px; }}
+QWidget#Keyboard QPushButton#KeyMod, QWidget#Keyboard QPushButton#KeyModOn {{
+    color: {COLOR_SUB}; font-size: 16px; min-width: 70px;
+}}
+QWidget#Keyboard QPushButton#KeyModOn {{
+    background-color: {COLOR_ACCENT}; color: #ffffff;
+}}
+QWidget#Keyboard QPushButton#KeySpace {{ min-width: 200px; font-size: 15px; color: {COLOR_SUB}; }}
+QWidget#Keyboard QPushButton#KeyDone {{
+    background-color: {COLOR_ACCENT}; color: #ffffff; font-size: 16px;
+    font-weight: bold; min-width: 100px;
+}}
 """

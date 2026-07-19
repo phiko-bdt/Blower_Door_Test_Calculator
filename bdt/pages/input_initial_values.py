@@ -79,6 +79,7 @@ class InputInitialValues(QWidget):
         volume_field = QLineEdit()
         volume_field.setPlaceholderText("예: 424.21 — 숫자만 입력")
         volume_field.setProperty("required", True)
+        volume_field.setProperty("numeric", True)
         self.input_fields["interior volume"] = volume_field
         req.addWidget(self._required_label("실내 체적 (㎥)"), 0, 0)
         req.addWidget(volume_field, 0, 1)
@@ -141,6 +142,8 @@ class InputInitialValues(QWidget):
             input_field.setPlaceholderText(placeholder)
             form.addWidget(label, r, c * 2)
             form.addWidget(input_field, r, c * 2 + 1)
+            if label_key == "floor area":
+                input_field.setProperty("numeric", True)
             self.input_fields[label_key] = input_field
         body_layout.addWidget(card)
 

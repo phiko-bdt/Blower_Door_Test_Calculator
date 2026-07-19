@@ -4,7 +4,8 @@ import json
 from datetime import datetime
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QMainWindow,
-                             QStackedWidget)
+                             QStackedWidget, QApplication, QLineEdit,
+                             QPushButton)
 from PyQt6.QtCore import QObject
 
 from bdt import paths
@@ -21,6 +22,7 @@ from bdt.pages import (
     ReportPage,
 )
 from bdt import settings
+from bdt.keyboard import OnScreenKeyboard
 from bdt.tasks import BackgroundTask
 
 
@@ -41,13 +43,43 @@ class MainWindow(QMainWindow):
         self.header.quit_button.clicked.connect(self._confirm_quit)
         self.stack = QStackedWidget()
 
+        # 터치스크린용 온스크린 키보드 — 입력창에 포커스가 가면 화면 아래에 뜬다.
+        # 물리 키보드가 없는 현장 단말이라 앱이 직접 그린다.
+        self.keyboard = OnScreenKeyboard()
+        self.keyboard.done.connect(self._hide_keyboard)
+        self.keyboard.setVisible(False)
+
         center = QWidget()
         outer = QVBoxLayout(center)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
         outer.addWidget(self.header)
         outer.addWidget(self.stack, 1)
+        outer.addWidget(self.keyboard)
         self.setCentralWidget(center)
+
+        # 앱 전역에서 입력창 포커스 변화를 감지해 키보드를 띄우고 내린다
+        app = QApplication.instance()
+        if app is not None:
+            app.focusChanged.connect(self._on_focus_changed)
+
+    def _on_focus_changed(self, _old, new):
+        """포커스가 입력창으로 가면 키보드를 띄운다 (숫자 칸이면 키패드)."""
+        if isinstance(new, QLineEdit):
+            self.keyboard.reset_compose()
+            self.keyboard.set_numeric(bool(new.property("numeric")))
+            self.keyboard.setVisible(True)
+        elif not isinstance(new, QPushButton):
+            # 키보드의 키(QPushButton)는 NoFocus 라 여기 안 오지만, 다른 곳으로
+            # 포커스가 가면 키보드를 내린다. 키를 누르는 동안은 유지된다.
+            self.keyboard.setVisible(False)
+
+    def _hide_keyboard(self):
+        self.keyboard.reset_compose()
+        self.keyboard.setVisible(False)
+        w = QApplication.focusWidget()
+        if isinstance(w, QLineEdit):
+            w.clearFocus()
 
     def _confirm_quit(self):
         """헤더의 종료 버튼 — 한 번 되묻고 닫는다.

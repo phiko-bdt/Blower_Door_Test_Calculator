@@ -127,6 +127,7 @@ class SettingsPage(QWidget):
             lo, hi = settings.LIMITS[key]
             edit.setPlaceholderText(f"{self._fmt(lo)}~{self._fmt(hi)}")
             edit.setToolTip(f"허용 범위: {self._fmt(lo)} ~ {self._fmt(hi)} {unit}")
+            edit.setProperty("numeric", True)
             self.fields[key] = edit
 
             grid.addLayout(text_block, row, col * 2)
@@ -162,6 +163,7 @@ class SettingsPage(QWidget):
                 title.setObjectName("StatName")
                 edit = QLineEdit()
                 edit.setFixedWidth(110)
+                edit.setProperty("numeric", True)
                 edit.setToolTip(
                     "㎥/h·%" if key == "slope" else "㎥/h")
                 self.fan_fields[(side, key)] = edit
@@ -180,6 +182,7 @@ class SettingsPage(QWidget):
         for key in ("duty_min", "duty_max"):
             edit = QLineEdit()
             edit.setMaximumWidth(80)
+            edit.setProperty("numeric", True)
             self.fan_fields[("duty_range", key)] = edit
             duty_row.addWidget(edit)
             if key == "duty_min":
