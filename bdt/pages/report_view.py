@@ -210,6 +210,17 @@ class ReportPage(QWidget):
         self._url_block, self.url_qr, self.url_sub = self._qr_step(
             "② 목록이 안 열리면 이 QR")
 
+        # 위·아래 사용법 — 각 QR 캡션은 '무엇을 스캔하나'만 말한다. 이 두 줄은
+        # 전체 흐름(폰 카메라로 시작 → 목록에서 받기로 끝)을 감싸 안내한다.
+        top_help = QLabel("폰 카메라 앱을 열어\n아래 QR 을 비추세요")
+        top_help.setObjectName("Hint")
+        top_help.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        top_help.setWordWrap(True)
+        bottom_help = QLabel("성적서 목록에서 '받기' 를\n누르면 폰에 저장됩니다")
+        bottom_help.setObjectName("Hint")
+        bottom_help.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        bottom_help.setWordWrap(True)
+
         self.qr_panel = QFrame()
         self.qr_panel.setObjectName("Card")
         self.qr_panel.setFixedWidth(210)
@@ -218,6 +229,7 @@ class ReportPage(QWidget):
         lay.setSpacing(12)
         lay.addWidget(title)
         lay.addWidget(rule)
+        lay.addWidget(top_help)
         lay.addStretch(1)
         lay.addWidget(self._wifi_block)
         # 두 QR 사이를 넉넉히 벌린다 — 붙어 있으면 폰으로 찍을 때 옆 QR 이
@@ -225,6 +237,7 @@ class ReportPage(QWidget):
         lay.addStretch(1)
         lay.addWidget(self._url_block)
         lay.addStretch(1)
+        lay.addWidget(bottom_help)
         self.qr_panel.setVisible(False)
         self._wifi_shown = None
         self._url_shown = None
