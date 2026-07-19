@@ -45,6 +45,11 @@ def load_fan_coefficients(file_path=paths.FAN_COEFFICIENTS_JSON):
             try:
                 data = json.load(f)
             except json.JSONDecodeError:
+                # 기본 계수로 폴백하되 반드시 알린다 — 조용히 넘어가면 현장
+                # 보정값이 아니라 공장 기본값으로 성적서가 발행되는데
+                # 작업자는 알 길이 없다.
+                print(f"경고: 팬 보정 파일({file_path})이 깨져 기본 계수를 "
+                      "사용합니다. 설정 화면에서 보정값을 다시 저장하세요.")
                 data = {}
         for cover, values in data.items():
             coeffs.setdefault(cover, {}).update(values)
@@ -79,7 +84,10 @@ class BlowerDoorTestCalculator:
         # PWM duty to Volumetric Flow rate calculation
         # 9GV2048P0G201 fan only (formerly OF-OD172SAP-Reversible)
         self.cover = measured_data.get("fan_cover", "none").lower()
-        self.num_fans = int(measured_data.get("fan_count", 2))
+        # 기본값은 화면·실시간 그래프(tasks/flow)와 같은 1 이어야 한다.
+        # 예전엔 여기만 2 라, fan_count 키가 없는 옛 데이터로 재계산하면
+        # 성적서 누기량이 화면 대비 조용히 2배가 됐다.
+        self.num_fans = int(measured_data.get("fan_count", 1))
 
         fan_coeffs = load_fan_coefficients()
         coeff = fan_coeffs.get(self.cover, fan_coeffs.get("none", DEFAULT_COEFFICIENTS["none"]))

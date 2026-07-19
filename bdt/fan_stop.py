@@ -18,6 +18,7 @@ sysfs PWM 설정은 프로세스가 끝나도 커널이 유지하므로, 이 스
 import sys
 import time
 
+from bdt import fan_guard
 from bdt import hardware
 from bdt.config import TEST_MODE
 
@@ -28,6 +29,16 @@ RETRY_INTERVAL = 1.0  # 초
 
 
 def main():
+    # 앱이 실행 중이면 팬은 앱이 관리한다 — 건드리면 측정을 망친다.
+    # 실제 사고 경로: 측정 중 바탕화면 아이콘을 다시 탭 → 두 번째 인스턴스가
+    # 중복 감지로 정상 종료 → .desktop/autostart 의 후행 fan_stop 이 실행돼
+    # 첫 인스턴스가 돌리던 팬을 꺼 버린다. 부팅·크래시 뒤처리 경로에서는
+    # 앱이 없으므로 이 확인이 걸리지 않는다.
+    if fan_guard.app_running():
+        print("기밀성능 시험 앱이 실행 중입니다 — 팬 제어는 앱에 맡기고 "
+              "duty 를 건드리지 않습니다.")
+        return 0
+
     last_error = None
 
     for attempt in range(1, RETRY_COUNT + 1):

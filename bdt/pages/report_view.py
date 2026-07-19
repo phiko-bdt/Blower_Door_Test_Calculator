@@ -22,9 +22,10 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QPushButton,
     QScrollArea,
+    QScroller,
     QFrame,
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import QPixmap
 
 from bdt import paths
@@ -50,6 +51,43 @@ def _qr_pixmap(url, size=150):
     except Exception:
         # segno 미설치·인코딩 실패 — QR 없이도 주소 안내는 되게 조용히 넘어간다
         return None
+
+
+class _UsbCopyTask(QThread):
+    """USB 복사를 백그라운드에서 수행한다.
+
+    GUI 스레드에서 copy2 + os.sync() 를 부르면 느린 USB 에서 수 초간 화면이
+    통째로 멈추고 아무 피드백이 없다 — 작업자가 멈춘 줄 알고 USB 를 뽑으면
+    sync 가 막으려던 바로 그 사고(깨진 파일)가 난다. 복사 동안 버튼은
+    '복사 중…' 으로 잠그고, 결과는 done 시그널로 알린다.
+    """
+
+    done = pyqtSignal(list, list)  # (복사된 마운트 이름들, 실패 설명들)
+
+    def __init__(self, pdf_path, name, mounts, parent=None):
+        super().__init__(parent)
+        self._pdf_path = pdf_path
+        self._name = name
+        self._mounts = mounts
+
+    def run(self):
+        copied, failed = [], []
+        for mount in self._mounts:
+            # 같은 이름이 이미 있으면 덮지 않고 번호를 붙인다 (보관함과 동일)
+            dest = os.path.join(mount, self._name)
+            stem, ext = os.path.splitext(dest)
+            n = 2
+            while os.path.exists(dest):
+                dest = f"{stem}({n}){ext}"
+                n += 1
+            try:
+                shutil.copy2(self._pdf_path, dest)
+                # 뽑을 때 파일이 깨지지 않게 캐시를 디스크로 내린다
+                os.sync()
+                copied.append(os.path.basename(mount))
+            except OSError as exc:
+                failed.append(f"{os.path.basename(mount)} ({exc})")
+        self.done.emit(copied, failed)
 
 
 class ReportPage(QWidget):
@@ -82,6 +120,10 @@ class ReportPage(QWidget):
         self.scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.scroll.setWidget(self.sheet)
+        # '100% 로 보기'에서 지면을 손가락 드래그로 이동할 수 있게 한다 —
+        # 폭 10px 스크롤바 핸들은 터치로 잡을 수 없다.
+        QScroller.grabGesture(self.scroll.viewport(),
+                              QScroller.ScrollerGestureType.LeftMouseButtonGesture)
 
         content = QHBoxLayout()
         content.setSpacing(16)
@@ -132,6 +174,7 @@ class ReportPage(QWidget):
 
         # PDF 가 없으면(렌더 실패해도 PDF 는 있어야 정상) USB 복사도 막는다
         self._can_copy = os.path.exists(self._pdf_path)
+        self._copy_task = None  # 실행 중인 USB 복사 (중복 실행 방지)
         # USB 가 '새로 꽂히는' 순간에만 안내 토스트를 띄우려고 직전 상태를 든다
         self._usb_present = False
         # USB·네트워크 QR 을 2초마다 갱신 (화면 떠 있는 동안 꽂거나 연결해도
@@ -345,12 +388,13 @@ class ReportPage(QWidget):
         return "기밀성능시험_성적서.pdf"
 
     def _copy_to_usb(self):
-        """성적서 PDF 를 꽂힌 USB(들)에 복사한다.
+        """성적서 PDF 를 꽂힌 USB(들)에 복사한다 (백그라운드, _UsbCopyTask).
 
-        같은 이름이 이미 있으면 덮지 않고 번호를 붙인다 (보관함과 같은 방침).
         복사가 끝났거나 실패했음을 알린다 — USB 는 뽑으면 그만이라 결과를
         분명히 알려야 작업자가 안심하고 뽑는다.
         """
+        if self._copy_task is not None and self._copy_task.isRunning():
+            return
         mounts = paths.usb_mounts()
         if not mounts:
             # 버튼을 누르는 사이 뽑혔다
@@ -358,23 +402,23 @@ class ReportPage(QWidget):
             alert(self, "USB 없음", "USB 저장소가 연결돼 있지 않습니다.")
             return
 
-        name = self._copy_dest_name()
-        copied, failed = [], []
-        for mount in mounts:
-            dest = os.path.join(mount, name)
-            stem, ext = os.path.splitext(dest)
-            n = 2
-            while os.path.exists(dest):
-                dest = f"{stem}({n}){ext}"
-                n += 1
-            try:
-                shutil.copy2(self._pdf_path, dest)
-                # 뽑을 때 파일이 깨지지 않게 캐시를 디스크로 내린다
-                os.sync()
-                copied.append(os.path.basename(mount))
-            except OSError as exc:
-                failed.append(f"{os.path.basename(mount)} ({exc})")
+        self.usb_button.setEnabled(False)
+        self.usb_button.setText("복사 중…")
+        # 새 시험으로 넘어가 이 페이지가 파괴돼도 복사는 끝까지 가도록 창을
+        # 부모로 둔다. 결과 알림(done→bound method)은 페이지가 살아 있을
+        # 때만 온다 — 파괴된 수신자로 가는 시그널은 Qt 가 자동 해제한다.
+        task = _UsbCopyTask(self._pdf_path, self._copy_dest_name(), mounts,
+                            parent=self.window())
+        task.done.connect(self._on_copy_done)
+        task.finished.connect(task.deleteLater)
+        self._copy_task = task
+        task.start()
 
+    def _on_copy_done(self, copied, failed):
+        self._copy_task = None
+        self.usb_button.setEnabled(True)
+        self.usb_button.setText("USB 로 복사")
+        name = self._copy_dest_name()
         if copied and not failed:
             where = ", ".join(copied)
             alert(self, "USB 복사 완료",

@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QFrame,
     QScrollArea,
+    QScroller,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
@@ -89,6 +90,10 @@ class SettingsPage(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setWidget(body)
+        # 터치 플릭 스크롤 — 키보드가 뜨면 본문이 줄어드는데 스크롤바 핸들은
+        # 손가락으로 못 잡는다 (조건 입력 페이지와 동일).
+        QScroller.grabGesture(scroll.viewport(),
+                              QScroller.ScrollerGestureType.LeftMouseButtonGesture)
         root.addWidget(scroll, 1)
 
         self._fill(settings.load(), settings.load_fan_coefficients())

@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QFrame,
 )
-from PyQt6.QtCore import QTimer, QPointF, Qt, QMargins, pyqtSignal
+from PyQt6.QtCore import QPointF, Qt, QMargins, pyqtSignal, QThread
 from PyQt6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
 from PyQt6.QtGui import QFont, QColor, QPen, QBrush, QPainter
 
@@ -27,6 +27,44 @@ from bdt.theme import (
 
 # 영기류(팬 정지) 압력의 허용 한계 (KS L ISO 9972 n항)
 ZERO_FLOW_LIMIT_PA = 3.0
+
+
+def _stop_poller(poller):
+    """워커에 정지를 요청한다. 이미 끝나 정리된 워커면 조용히 넘어간다."""
+    try:
+        poller.requestInterruption()
+    except RuntimeError:
+        pass  # finished → deleteLater 로 이미 파괴된 워커
+
+
+class _SensorPoller(QThread):
+    """압력을 계속 읽어 시그널로 넘기는 워커.
+
+    예전엔 100ms QTimer 가 GUI 스레드에서 pressure_read 를 직접 불렀다.
+    센서 포트는 열리는데 응답이 없으면(센서측 단선 등) 읽기당 최대 5초를
+    GUI 가 통째로 멈춰, 전체화면 단말에서 유일한 탈출구인 '종료' 버튼까지
+    무반응이 됐다. 정상일 때도 읽기 ~100ms 동안 화면이 막혔다.
+    읽기를 이 스레드로 옮기고 화면은 시그널만 받는다.
+    """
+
+    reading = pyqtSignal(float)
+    failed = pyqtSignal(str)
+
+    def run(self):
+        import time
+        while not self.isInterruptionRequested():
+            t0 = time.monotonic()
+            try:
+                value = hardware.pressure_read(test=TEST_MODE)
+            except hardware.SensorTimeout as exc:
+                self.failed.emit(str(exc))
+                continue
+            self.reading.emit(float(value))
+            # 실측은 pressure_read 자체가 average_time(~100ms)을 쓰지만,
+            # 테스트 모드·모킹된 읽기는 즉시 반환이라 그대로 두면 루프가
+            # 공회전하며 시그널을 퍼붓는다 — 읽기가 빨랐으면 쉬어 간다.
+            if time.monotonic() - t0 < 0.05:
+                self.msleep(100)
 
 
 class LivePressureData(QWidget):
@@ -170,22 +208,42 @@ class LivePressureData(QWidget):
         layout.addLayout(top_bar)
         layout.addWidget(chart_card, 1)
 
-        # 초기 데이터는 0 으로 깔고 실제 값은 타이머(update_chart)가 채운다.
+        # 초기 데이터는 0 으로 깔고 실제 값은 센서 워커가 채운다.
         # 예전처럼 생성자에서 센서를 10번 읽으면 (a) GUI 스레드가 읽기당
         # 최대 5초씩 얼어붙고 (b) 센서 미연결 시 슬롯 안 미처리 예외로
-        # 앱이 즉사했다. update_chart 는 SensorTimeout 을 잡는다.
+        # 앱이 즉사했다. 실패는 _on_failed 가 받아 타일로만 알린다.
         self.data = [QPointF(i, 0.0) for i in range(10)]
         self.series.replace(self.data)
         self.rescale_y()
 
-        # 타이머 설정 (100ms 마다 update_chart 호출)
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_chart)
-        self.timer.start(100)
+        # 센서 읽기는 워커 스레드가 담당한다 (_SensorPoller 참고).
+        # 페이지가 파괴될 때(측정으로 넘어가거나 오류·종료) 워커도 멈춘다 —
+        # 페이지에 부모로 묶으면 워커가 도는 채 파괴돼 크래시하므로, 부모 없이
+        # 두고 finished → deleteLater 로 스스로 정리하게 한다.
+        self._sensor_ok = True   # 실패 로그를 상태가 바뀔 때 한 번만 찍는다
+        self._poller = _SensorPoller()
+        self._poller.reading.connect(self._on_reading)
+        self._poller.failed.connect(self._on_failed)
+        self._poller.finished.connect(self._poller.deleteLater)
+        # destroyed 는 인자(QObject)를 넘기므로 requestInterruption 을 직접
+        # 연결하면 TypeError 가 난다. self 는 파괴 중이라 만지지 않도록
+        # 워커를 직접 캡처한다 (이미 정리된 워커는 _stop_poller 가 흡수).
+        poller = self._poller
+        self.destroyed.connect(lambda *_: _stop_poller(poller))
+        self._poller.start()
 
-        # 측정 시작 버튼 → 타이머를 멈추고 다음 단계로
-        self.stop_button.clicked.connect(self.timer.stop)
-        self.stop_button.clicked.connect(self.started.emit)
+        # 측정 시작 버튼 → 워커를 세운 '뒤에' 다음 단계로. 워커가 시리얼
+        # 포트를 쥔 채 측정 작업(tasks)이 같은 포트를 열면 프레임이 섞인다.
+        self.stop_button.clicked.connect(self._begin_measurement)
+
+    def _begin_measurement(self):
+        """센서 워커를 세우고, 완전히 멈춘 뒤 started 를 낸다 (정상 ~0.1초)."""
+        self.stop_button.setEnabled(False)
+        if self._poller.isRunning():
+            self._poller.finished.connect(self.started.emit)
+            self._poller.requestInterruption()
+        else:
+            self.started.emit()
 
     def rescale_y(self):
         """측정값이 항상 보이도록 y축 범위를 데이터에 맞춘다.
@@ -209,18 +267,23 @@ class LivePressureData(QWidget):
         self.stat_name.style().unpolish(self.stat_name)
         self.stat_name.style().polish(self.stat_name)
 
-    def update_chart(self):
+    def _on_failed(self, message):
+        # 센서가 끊겨도 이전 값을 유지하고 상태만 알린다.
+        # 큰 숫자 자리에 문장을 넣으면 타일이 깨지므로, 값은 비우고
+        # 이름 자리에 상태를 적는다 (색만으로 알리지 않는다).
+        self.value_label.setText("–")
+        self._set_stat("⚠ 센서 응답 없음", "warn")
+        if self._sensor_ok:
+            # 상태가 바뀔 때 한 번만 찍는다 — 실패마다 찍으면 자동 실행
+            # 터미널이 수만 줄로 뒤덮인다.
+            print(message)
+            self._sensor_ok = False
+
+    def _on_reading(self, new):
         # 새로운 측정값을 데이터에 추가
-        try:
-            new = hardware.pressure_read(test=TEST_MODE)
-        except hardware.SensorTimeout as exc:
-            # 센서가 끊겨도 창이 멈추지 않도록 알리기만 하고 이전 값을 유지한다.
-            # 큰 숫자 자리에 문장을 넣으면 타일이 깨지므로, 값은 비우고
-            # 이름 자리에 상태를 적는다 (색만으로 알리지 않는다).
-            self.value_label.setText("–")
-            self._set_stat("⚠ 센서 응답 없음", "warn")
-            print(exc)
-            return
+        if not self._sensor_ok:
+            print("압력 센서 응답이 복구되었습니다.")
+            self._sensor_ok = True
 
         # 영기류 압력 확인 (KS L ISO 9972 n항: 절대값 3 Pa 초과면 시험을
         # 수행하지 않는다). 이 화면은 팬 정지 상태의 준비 화면이라, 지금

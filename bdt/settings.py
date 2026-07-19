@@ -137,11 +137,26 @@ def validate(values):
     return clean
 
 
+def _write_json(path, data):
+    """임시 파일에 다 쓴 뒤 원자적으로 바꿔치운다.
+
+    원본에 바로 쓰다가 도중에 전원이 나가면(현장 단말에서 충분히 현실적)
+    파일이 반쯤 잘려, 다음 시험부터 읽는 쪽이 조용히 기본값으로 폴백한다 —
+    특히 팬 보정값이 공장 기본값으로 돌아가면 성적서 수치가 틀어지는데
+    작업자는 알 수 없다. os.replace 는 같은 파일시스템 안에서 원자적이다.
+    """
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
 def save(values):
     """설정을 저장한다 (알려진 키만, 검증을 통과한 값만)."""
     clean = validate(values)
-    with open(SETTINGS_JSON, "w") as f:
-        json.dump(clean, f, indent=4, ensure_ascii=False)
+    _write_json(SETTINGS_JSON, clean)
     return clean
 
 
@@ -226,6 +241,5 @@ def save_fan_coefficients(cover_values, cover=FAN_COVER):
     entry = dict(data.get(cover, {}))
     entry.update(clean)
     data[cover] = entry
-    with open(paths.FAN_COEFFICIENTS_JSON, "w") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
+    _write_json(paths.FAN_COEFFICIENTS_JSON, data)
     return data

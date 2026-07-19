@@ -5,8 +5,8 @@ from datetime import datetime
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QMainWindow,
                              QStackedWidget, QApplication, QLineEdit,
-                             QPushButton)
-from PyQt6.QtCore import QObject
+                             QPushButton, QScrollArea)
+from PyQt6.QtCore import QObject, QTimer
 
 from bdt import paths
 from bdt.widgets import StepHeader, confirm
@@ -67,15 +67,36 @@ class MainWindow(QMainWindow):
         """포커스가 입력창으로 가면 키보드를 띄운다 (숫자 칸이면 키패드)."""
         if isinstance(new, QLineEdit):
             self.keyboard.reset_compose()
+            self.keyboard.attach(new)
             self.keyboard.set_numeric(bool(new.property("numeric")))
             self.keyboard.setVisible(True)
+            # 키보드가 올라오면 본문이 세로로 줄어 하단 필드가 키보드에
+            # 가려질 수 있다. 줄어든 '뒤'의 좌표로 스크롤해야 하므로
+            # 레이아웃이 정리된 다음 틱에 필드를 화면 안으로 끌어온다.
+            QTimer.singleShot(0, lambda: self._reveal_field(new))
         elif not isinstance(new, QPushButton):
             # 키보드의 키(QPushButton)는 NoFocus 라 여기 안 오지만, 다른 곳으로
             # 포커스가 가면 키보드를 내린다. 키를 누르는 동안은 유지된다.
+            self.keyboard.attach(None)
             self.keyboard.setVisible(False)
+
+    @staticmethod
+    def _reveal_field(field):
+        """필드를 감싼 스크롤 영역을 찾아 필드가 보이는 위치로 스크롤한다."""
+        try:
+            w = field.parentWidget()
+            while w is not None:
+                if isinstance(w, QScrollArea):
+                    w.ensureWidgetVisible(field, 50, 60)
+                    return
+                w = w.parentWidget()
+        except RuntimeError:
+            # 다음 틱이 오기 전에 페이지가 교체돼 필드가 파괴됐다
+            pass
 
     def _hide_keyboard(self):
         self.keyboard.reset_compose()
+        self.keyboard.attach(None)
         self.keyboard.setVisible(False)
         w = QApplication.focusWidget()
         if isinstance(w, QLineEdit):
@@ -88,10 +109,19 @@ class MainWindow(QMainWindow):
         분명한 의사표시였다). 전체화면에서는 이 버튼이 유일한 종료 수단이라
         화면 구석에 늘 떠 있으므로, 지나가다 스친 터치로 앱이 꺼지지 않게
         여기서 한 번 더 묻는다.
+
+        단, 작업(측정·계산)이 진행 중이면 여기서 묻지 않고 바로 close() 로
+        넘긴다 — closeEvent 가 측정 손실을 경고하는 문맥 있는 확인을 띄우는데,
+        여기서도 물으면 작업자가 같은 결정을 두 번 승인해야 한다.
         """
+        flow = getattr(self, "flow", None)
+        task = getattr(flow, "task", None) if flow else None
+        if task is not None and task.isRunning():
+            self.close()  # 확인·작업 정리는 closeEvent 가 맡는다
+            return
         if confirm(self, "앱 종료", "기밀성능 시험 앱을 종료할까요?",
                    ok_text="종료", cancel_text="취소", danger=True):
-            self.close()  # 진행 중 작업 정리는 closeEvent 가 맡는다
+            self.close()
 
     def closeEvent(self, event):
         """작업 중에는 확인 없이 닫히지 않게 하고, 닫을 때는 작업을 정리한다.

@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QFrame,
     QScrollArea,
+    QScroller,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
@@ -171,6 +172,11 @@ class InputInitialValues(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setWidget(body)
+        # 터치 플릭으로 본문을 스크롤할 수 있게 한다. 키보드가 뜨면 본문이
+        # 세로로 줄어 스크롤이 생기는데, 폭 10px 스크롤바 핸들은 손가락으로
+        # 잡을 수 없다 (터치 단말의 유일한 스크롤 수단이 플릭이다).
+        QScroller.grabGesture(scroll.viewport(),
+                              QScroller.ScrollerGestureType.LeftMouseButtonGesture)
         root.addWidget(scroll, 1)
 
     @staticmethod

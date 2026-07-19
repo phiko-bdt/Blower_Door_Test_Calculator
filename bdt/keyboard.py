@@ -204,6 +204,8 @@ class OnScreenKeyboard(QWidget):
         self._shift = False
         self._numeric = False   # 필드가 강제하는 숫자 키패드
         self._symbol = False    # 텍스트 칸에서 연 숫자·특수문자 레이어
+        self._field = None      # attach() 로 붙인 현재 입력창
+        self._editing = False   # 키보드 자신이 입력창을 고치는 중 (커서 감시 무시)
 
         self._grid_host = QVBoxLayout(self)
         self._grid_host.setContentsMargins(8, 6, 8, 8)
@@ -214,6 +216,32 @@ class OnScreenKeyboard(QWidget):
     def _target(self):
         w = QApplication.focusWidget()
         return w if isinstance(w, QLineEdit) else None
+
+    def attach(self, field):
+        """입력창의 커서 이동을 감시한다 — 조합 중 커서를 옮기면 리셋.
+
+        조합 중(예: "서" 까지 입력) 사용자가 입력창을 탭해 커서를 다른 자리로
+        옮기면, 다음 자모의 'update' 가 backspace 로 **커서 왼쪽의 엉뚱한
+        글자**를 지운다. 커서가 움직이는 순간 조합을 확정(리셋)해 막는다.
+        키보드 자신의 insert/backspace 도 커서를 움직이므로 _editing 플래그로
+        구분한다.
+        """
+        if field is self._field:
+            return
+        if self._field is not None:
+            try:
+                self._field.cursorPositionChanged.disconnect(self._on_cursor_moved)
+                self._field.selectionChanged.disconnect(self._on_cursor_moved)
+            except (TypeError, RuntimeError):
+                pass  # 필드가 이미 파괴됐거나 연결이 끊겨 있다
+        self._field = field
+        if field is not None:
+            field.cursorPositionChanged.connect(self._on_cursor_moved)
+            field.selectionChanged.connect(self._on_cursor_moved)
+
+    def _on_cursor_moved(self, *_args):
+        if not self._editing:
+            self.reset_compose()
 
     def set_numeric(self, numeric):
         # 새 필드로 포커스가 옮겨질 때마다 문자 레이어로 돌아온다
@@ -243,35 +271,43 @@ class OnScreenKeyboard(QWidget):
 
     def _feed_hangul(self, field, jamo):
         action, arg = self._auto.add(jamo)
-        if action == 'update':
-            if self._composing:
+        self._editing = True
+        try:
+            if action == 'update':
+                if self._composing:
+                    field.backspace()
+                field.insert(arg)
+            elif action == 'new':
+                field.insert(arg)
+            elif action == 'split':
                 field.backspace()
-            field.insert(arg)
-        elif action == 'new':
-            field.insert(arg)
-        elif action == 'split':
-            field.backspace()
-            field.insert(arg[0])
-            field.insert(arg[1])
-        else:                    # pass
-            field.insert(jamo)
+                field.insert(arg[0])
+                field.insert(arg[1])
+            else:                    # pass
+                field.insert(jamo)
+        finally:
+            self._editing = False
         self._composing = True
 
     def _backspace(self):
         field = self._target()
         if not field:
             return
-        if self._composing:
-            action, arg = self._auto.backspace()
-            if action == 'update':
-                field.backspace()
-                field.insert(arg)
-                return
-            if action == 'delete':
-                field.backspace()
-                self._composing = False
-                return
-        field.backspace()
+        self._editing = True
+        try:
+            if self._composing:
+                action, arg = self._auto.backspace()
+                if action == 'update':
+                    field.backspace()
+                    field.insert(arg)
+                    return
+                if action == 'delete':
+                    field.backspace()
+                    self._composing = False
+                    return
+            field.backspace()
+        finally:
+            self._editing = False
 
     def _toggle_lang(self):
         self.reset_compose()
@@ -332,11 +368,13 @@ class OnScreenKeyboard(QWidget):
             self._build_text()
 
     def _build_numeric(self):
-        # 숫자 칸은 0~9 · 점 · 지우기를 한 줄로만 둔다 — 문자가 없으니 아주
-        # 얇게. 확정/닫기는 헤더의 동작 버튼(저장 등)이 맡으므로 완료 키는 없다.
+        # 숫자 칸은 0~9 · 점 · 음수 부호 · 지우기를 한 줄로만 둔다 — 문자가
+        # 없으니 아주 얇게. 음수 부호는 팬 보정식 절편이 음수로 나올 수 있어
+        # 필요하다 (물리 키보드 없는 단말에서 유일한 입력 수단이다).
+        # 확정/닫기는 헤더의 동작 버튼(저장 등)이 맡으므로 완료 키는 없다.
         r = QHBoxLayout()
         r.setSpacing(6)
-        for ch in "0123456789.":
+        for ch in "0123456789.-":
             r.addWidget(self._btn(ch, lambda _=None, c=ch: self._key(c)))
         r.addWidget(self._btn("⌫", lambda: self._backspace()))
         self._grid_host.addLayout(r)
