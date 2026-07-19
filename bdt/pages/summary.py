@@ -106,7 +106,7 @@ class CalculationSummary(QWidget):
 
         model = QLabel("Q = C₀ · Δpⁿ")
         model.setObjectName("Formula")
-        model_note = QLabel("측정점에 최소 자승법 회귀를 적용해 누기 계수와 기류 지수 n 을 구합니다.")
+        model_note = QLabel("측정 지점에 최소제곱법 회귀를 적용해 누기 계수와 기류 지수 n 을 구합니다.")
         model_note.setObjectName("Hint")
         model_note.setWordWrap(True)
         left_layout.addWidget(model)

@@ -309,8 +309,7 @@ class BackgroundTask(QThread):
             return
         try:
             if hardware.duty_set(0, test=TEST_MODE) != 0:
-                self.report("⚠ 팬 정지 실패 — PWM 핀 손상이 의심됩니다. "
-                            "전원을 수동으로 차단하세요.")
+                self.report("⚠ 팬 정지 실패 — 팬 전원을 차단해 주세요.")
         except Exception:
             traceback.print_exc()
 
@@ -418,7 +417,7 @@ class BackgroundTask(QThread):
                 min_duty, max_duty, max_pressure, settle_per_duty)
             if duty <= lowest_duty:
                 raise TestImpossible(
-                    f"팬 최소({min_duty}%)에서 {pressure:.1f} Pa 인데, 한 단계만 "
+                    f"팬 세기 최소({min_duty}%)에서 {pressure:.1f} Pa 인데, 한 단계만 "
                     f"올려도 시험 가능 상한({max_pressure:.0f} Pa)을 넘습니다.\n\n"
                     "측정할 수 있는 팬 세기 구간이 없습니다. 외풍이 심하거나 "
                     "공간이 지나치게 기밀한 상태입니다.")
@@ -445,7 +444,7 @@ class BackgroundTask(QThread):
             raise TestImpossible(
                 f"측정할 수 있는 팬 세기 구간이 너무 좁습니다 "
                 f"(시작 {duty}% · 최저 {lowest_duty}%).\n\n"
-                "팬을 거의 최소로 돌려도 목표 압력에 닿을 만큼 기밀한 공간입니다. "
+                "팬 세기를 거의 최소로 낮춰도 목표 압력에 닿을 만큼 기밀한 공간입니다. "
                 "압력을 여러 단계로 나눠 측정할 수 없어 기류 지수를 구할 수 "
                 "없습니다.")
 
@@ -474,7 +473,7 @@ class BackgroundTask(QThread):
                             f"{p:.1f} Pa (변동 ±{sigma:.1f})")
                 if abs(p) < low_warn:
                     self.report(f"⚠ 측정 압력이 {low_warn:.0f} Pa 미만입니다 "
-                                "— 바람 영향이 커 이 지점의 신뢰도가 낮습니다")
+                                "— 외기 흐름의 영향이 커 이 지점의 신뢰도가 낮을 수 있습니다")
                 measuring["measured_value"].append([p, d])
                 measuring["pressure_spread"].append(
                     {"duty": d, "std": sigma, "min": p_min, "max": p_max})
@@ -499,7 +498,7 @@ class BackgroundTask(QThread):
         # 시험 종료 — 팬 정지 후 실제로 멈췄는지 확인한다
         self.report("측정 완료 — 팬을 정지하는 중…")
         if hardware.duty_set(zero_duty, test=TEST_MODE) != 0:
-            self.report("⚠ 팬 정지 실패 — PWM 핀 손상이 의심됩니다. 전원을 수동으로 차단하세요.")
+            self.report("⚠ 팬 정지 실패 — 팬 전원을 차단해 주세요.")
         # 시험 종료 시간 기록
         time_end = datetime.now().strftime("%H:%M:%S")
         measuring["test time"] = [time_start, time_end]
@@ -666,9 +665,7 @@ class BackgroundTask(QThread):
         if not result:
             # return 으로 끝내면 finished 만 나가 완료 화면이 '성적서가 표시
             # 됩니다'로 안내한다 — 파일은 없거나 이전 시험 것인데. 오류로 알린다.
-            raise RuntimeError(
-                "성적서 PDF 를 만들지 못했습니다. chromium 이 설치돼 있는지 "
-                "확인하세요.")
+            raise RuntimeError("성적서 PDF 생성 실패했습니다.")
         self.report("성적서 생성 완료: report.pdf")
         self.archive_report(pdf_path, conditions)
         self.render_report_image(pdf_path)
@@ -730,8 +727,7 @@ class BackgroundTask(QThread):
             os.remove(paths.REPORT_PNG)
         pdftoppm = shutil.which("pdftoppm")
         if not pdftoppm:
-            self.report("⚠ pdftoppm 이 없어 성적서를 화면에 띄울 수 없습니다 "
-                        "(PDF 파일은 저장됨)")
+            self.report("성적서 화면 출력 실패했습니다.")
             return
         # -singlefile: 이름 뒤에 페이지 번호를 붙이지 않는다 (성적서는 1페이지)
         stem = os.path.splitext(paths.REPORT_PNG)[0]
@@ -741,6 +737,5 @@ class BackgroundTask(QThread):
                     check=True, timeout=60,
                     stdout=sub.DEVNULL, stderr=sub.DEVNULL)
         except (sub.SubprocessError, OSError) as exc:
-            self.report(f"⚠ 성적서 화면 표시용 렌더 실패 ({exc}) — "
-                        "PDF 파일은 저장됐습니다")
+            self.report("성적서 화면 출력 실패했습니다.")
 

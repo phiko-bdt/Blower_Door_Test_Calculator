@@ -111,9 +111,7 @@ def main():
         if fan_stop_error:
             detail = f"원인: {fan_stop_error}"
         else:
-            detail = (f"PWM 핀 GPIO{hardware.PWM_GPIO} 손상이 의심됩니다.\n"
-                      "팬이 계속 회전할 수 있으니 전원을 수동으로 차단하고,\n"
-                      "PWM 배선과 핀 상태를 점검한 뒤 시험을 진행하세요.")
+            detail = ("팬이 계속 회전할 수 있으니 팬 전원을 차단해 주세요.")
         alert(window, "팬 정지 실패",
               f"팬을 정지시키지 못했습니다.\n\n{detail}")
 

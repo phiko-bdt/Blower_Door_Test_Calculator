@@ -144,7 +144,7 @@ class ReportPage(QWidget):
             # 실패가 아니다. 화면에서만 못 보여준다는 것을 분명히 알린다.
             self.sheet.setText(
                 "성적서를 화면에 표시하지 못했습니다.\n\n"
-                f"PDF 파일은 저장돼 있습니다: {self._pdf_path}")
+                "성적서는 바탕화면 폴더에서 확인할 수 있습니다.")
             self.sheet.setObjectName("Message")
             self.zoom_button.setEnabled(False)
 
