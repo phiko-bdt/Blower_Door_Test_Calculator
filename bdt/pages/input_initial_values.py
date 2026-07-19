@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QGridLayout,
     QCheckBox,
-    QComboBox,
     QFrame,
     QScrollArea,
 )
@@ -98,14 +97,19 @@ class InputInitialValues(QWidget):
         req.addWidget(self._required_label("실내 체적 (㎥)"), 0, 0)
         req.addWidget(volume_field, 0, 1)
 
-        # 팬 수량 — duty→누기량 환산이 팬 개수에 비례하므로 반드시 맞아야 한다.
+        # 팬 수량 — 쓰는 팬을 고른다(체크한 개수 = 팬 수). duty→누기량 환산이
+        # 팬 개수에 비례하므로 반드시 하나 이상 골라야 한다. 감압·가압 선택과
+        # 같은 체크박스 방식이라 화면이 일관된다.
         # (팬 커버 선택은 기능을 쓰지 않기로 해 UI 에서 뺐다. 저장하지 않으면
         # 계산부가 기본값 "none" 을 쓴다.)
-        self.count_combo = QComboBox()
-        self.count_combo.addItems(["1", "2"])
-        self.count_combo.setProperty("required", True)
+        self.fan_checks = [QCheckBox("팬 1"), QCheckBox("팬 2")]
+        fan_row = QHBoxLayout()
+        fan_row.setSpacing(32)
+        for cb in self.fan_checks:
+            fan_row.addWidget(cb)
+        fan_row.addStretch(1)
         req.addWidget(self._required_label("팬 수량"), 0, 2)
-        req.addWidget(self.count_combo, 0, 3)
+        req.addLayout(fan_row, 0, 3)
 
         # 수행할 시험 (감압 / 가압) — 하나 이상 필수
         self.checkbox_states = {}
@@ -230,6 +234,12 @@ class InputInitialValues(QWidget):
             return
         self.input_fields["floor area"].setText(area)
 
+        # 팬을 하나 이상 선택했는지 확인 (체크한 개수 = 팬 수)
+        fan_count = sum(cb.isChecked() for cb in self.fan_checks)
+        if fan_count == 0:
+            alert(self, "선택 오류", "팬을 하나 이상 선택해야 합니다.")
+            return
+
         # 감압 또는 가압 중 적어도 하나가 선택되었는지 확인
         is_checked = self.checkbox_states.get("depressurization", False) or self.checkbox_states.get("pressurization", False)
         if not is_checked:
@@ -242,8 +252,8 @@ class InputInitialValues(QWidget):
         for key, input_field in self.input_fields.items():
             value = input_field.text()
             data[key] = value
-        # Fan options
-        data["fan_count"] = int(self.count_combo.currentText())
+        # Fan options — 체크한 팬 개수
+        data["fan_count"] = fan_count
         # 체크박스 데이터 저장
         for key, checkbox in self.checkbox_states.items():
             data[key] = checkbox
