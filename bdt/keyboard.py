@@ -181,6 +181,8 @@ _EN_ROWS = [
     list("zxcvbnm"),
 ]
 _NUM_ROWS = [list("789"), list("456"), list("123"), list("0.")]
+# 문자·기호 레이어 오른쪽에 붙는 텐키 (넓은 가로폭 활용)
+_TENKEY_ROWS = [list("789"), list("456"), list("123"), ['0', '.', '⌫']]
 # 텍스트 칸에서 한/영 옆 버튼으로 여는 숫자·특수문자 레이어
 _SYM_ROWS = [
     list("1234567890"),
@@ -343,7 +345,24 @@ class OnScreenKeyboard(QWidget):
         tail.addWidget(self._btn("완료", lambda: self.done.emit(), "Done"))
         self._grid_host.addLayout(tail)
 
+    def _tenkey_column(self):
+        """오른쪽에 붙는 텐키. 넓은 가로폭을 채우고 숫자 입력을 빠르게 한다."""
+        col = QVBoxLayout()
+        col.setSpacing(5)
+        for row in _TENKEY_ROWS:
+            r = QHBoxLayout()
+            r.setSpacing(5)
+            for ch in row:
+                if ch == "⌫":
+                    r.addWidget(self._btn("⌫", lambda: self._backspace()))
+                else:
+                    r.addWidget(self._btn(ch, lambda _=None, c=ch: self._key(c)))
+            col.addLayout(r)
+        return col
+
     def _build_text(self):
+        left = QVBoxLayout()
+        left.setSpacing(5)
         rows = _KO_ROWS if self._hangul else _EN_ROWS
         for i, row in enumerate(rows):
             r = QHBoxLayout()
@@ -361,7 +380,7 @@ class OnScreenKeyboard(QWidget):
                                       lambda _=None, c=label: self._key(c)))
             if i == 2:           # 세 번째 줄 끝에 지우기
                 r.addWidget(self._btn("⌫", lambda: self._backspace(), "Mod"))
-            self._grid_host.addLayout(r)
+            left.addLayout(r)
         # 맨 아랫줄: !#1(기호) · 한/영 · 스페이스 · 완료
         bottom = QHBoxLayout()
         bottom.setSpacing(5)
@@ -369,9 +388,12 @@ class OnScreenKeyboard(QWidget):
         bottom.addWidget(self._btn("한/영", lambda: self._toggle_lang(), "Mod"))
         bottom.addWidget(self._btn("스페이스", lambda: self._space(), "Space"))
         bottom.addWidget(self._btn("완료", lambda: self.done.emit(), "Done"))
-        self._grid_host.addLayout(bottom)
+        left.addLayout(bottom)
+        self._grid_host.addLayout(self._frame(left))
 
     def _build_symbol(self):
+        left = QVBoxLayout()
+        left.setSpacing(5)
         for i, row in enumerate(_SYM_ROWS):
             r = QHBoxLayout()
             r.setSpacing(5)
@@ -379,11 +401,20 @@ class OnScreenKeyboard(QWidget):
                 r.addWidget(self._btn(ch, lambda _=None, c=ch: self._key(c)))
             if i == len(_SYM_ROWS) - 1:      # 마지막 줄 끝에 지우기
                 r.addWidget(self._btn("⌫", lambda: self._backspace(), "Mod"))
-            self._grid_host.addLayout(r)
+            left.addLayout(r)
         # 맨 아랫줄: 가/A(문자로) · 스페이스 · 완료
         bottom = QHBoxLayout()
         bottom.setSpacing(5)
         bottom.addWidget(self._btn("가·A", lambda: self._toggle_symbol(), "Mod"))
         bottom.addWidget(self._btn("스페이스", lambda: self._space(), "Space"))
         bottom.addWidget(self._btn("완료", lambda: self.done.emit(), "Done"))
-        self._grid_host.addLayout(bottom)
+        left.addLayout(bottom)
+        self._grid_host.addLayout(self._frame(left))
+
+    def _frame(self, left):
+        """왼쪽 문자 키보드 + 오른쪽 텐키를 한 줄에 배치."""
+        outer = QHBoxLayout()
+        outer.setSpacing(8)
+        outer.addLayout(left, 3)
+        outer.addLayout(self._tenkey_column(), 1)
+        return outer
