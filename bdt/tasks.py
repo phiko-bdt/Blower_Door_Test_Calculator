@@ -224,7 +224,7 @@ class BackgroundTask(QThread):
                          settle_per_duty):
         """상한 압력을 넘지 않는 가장 높은 팬 세기를 찾는다.
 
-        팬을 최소로 낮춰도 목표를 넘는 공간에서만 쓴다. 이때 스윕은 최소에서
+        팬 세기를 최소로 낮춰도 목표를 넘는 공간에서만 쓴다. 이때 스윕은 최소에서
         위로 갈 수밖에 없는데, 상한(기본 100 Pa)을 넘는 지점까지 재면 시험
         압력 구간을 벗어난 점이 회귀에 섞인다. 그래서 최소부터 한 단계씩
         올려보며 상한을 넘기 직전 세기를 스윕의 시작점으로 삼는다.
@@ -372,7 +372,7 @@ class BackgroundTask(QThread):
         # 압력 변동폭(pressure_spread)을 남겨 바람의 영향을 눈으로 볼 수 있게 한다.
 
         # 시험 시작
-        self.report(f"팬 속도를 조절해 목표 압력({target:.0f} Pa)을 맞추는 중…")
+        self.report(f"팬 세기를 조절해 목표 압력({target:.0f} Pa)을 맞추는 중…")
         # 목표 압력에 해당하는 PWM duty 값 추출
         (duty, success, pressure, saturated) = control.get_duty(
             target=target,
@@ -397,17 +397,17 @@ class BackgroundTask(QThread):
         if success:
             self.report(f"목표 압력 도달 — 팬 세기 {duty}%, 압력 {pressure:.1f} Pa")
         elif saturated == "min":
-            # 팬을 최소로 낮춰도 목표를 넘는다 = 아주 기밀한 공간이거나 외풍.
+            # 팬 세기를 최소로 낮춰도 목표를 넘는다 = 아주 기밀한 공간이거나 외풍.
             # 예전엔 이 경우에도 최대 duty 로 올려 스윕했는데, 압력이 이미
-            # 높은데 팬을 더 돌리는 정반대 처리였다.
+            # 높은데 팬 세기를 더 높이는 정반대 처리였다.
             if pressure > max_pressure:
                 # 최소에서도 상한을 넘으면 압력을 제어할 방법이 없다.
                 raise TestImpossible(
-                    f"팬을 최소({min_duty}%)로 낮춰도 압력이 "
+                    f"팬 세기를 최소({min_duty}%)로 낮춰도 압력이 "
                     f"{pressure:.1f} Pa 로 시험 가능 상한({max_pressure:.0f} Pa)을 "
                     "넘습니다.\n\n외풍이 심하거나 공간이 지나치게 기밀해 압력을 "
                     "제어할 수 없습니다. 기상 조건을 확인하고 다시 시도하세요.")
-            self.report(f"팬 최소({min_duty}%)에서도 목표 {target:.0f} Pa 를 넘습니다 "
+            self.report(f"팬 세기를 최소({min_duty}%)로 낮춰도 목표 {target:.0f} Pa 를 넘습니다 "
                         f"(현재 {pressure:.1f} Pa) — 측정 가능한 팬 세기 구간을 "
                         "찾는 중…")
             # 최소가 이 공간에서 낼 수 있는 가장 낮은 압력이다. 스윕은 최소에서

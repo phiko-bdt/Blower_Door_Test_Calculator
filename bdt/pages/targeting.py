@@ -1,4 +1,4 @@
-"""목표 압력 조절 페이지 — 팬을 조이며 목표 압력을 찾아가는 과정을 보여준다.
+"""목표 압력 조절 페이지 — 팬 세기를 높이며 목표 압력을 찾아가는 과정을 보여준다.
 
 측정 시작 직후 PID 제어가 건물 체적·누기량에 맞는 팬 세기를 찾는 동안
 (짧으면 수십 초, 목표에 못 미치면 더 오래) 예전엔 측정 차트 페이지의
@@ -56,7 +56,7 @@ class TargetingPage(QWidget):
         # ── 상단: 메시지(좌) + 압력/팬 세기/유지 타일 + 중단 버튼(우) ──
         self.message_label = QLabel(initial_message)
         self.message_label.setObjectName("Message")
-        self.progress = QLabel("팬 속도를 조절하고 있습니다…")
+        self.progress = QLabel("팬 세기를 조절하고 있습니다…")
         self.progress.setObjectName("Hint")
         self.progress.setWordWrap(True)
         head = QVBoxLayout()

@@ -211,14 +211,14 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
         # 7~20 Pa 인 채 duty 100 에 포화되면 수렴도 실패도 아닌 데드존에 갇혀
         # 영영 반환하지 않았다. (카운트도 위 대기 루프가 실시간으로 센다)
         if duty == 100 and error_pressure >= pressure_threshold:
-            notify(f"팬을 최대로 돌려도 목표 {target} Pa에 못 미칩니다 "
+            notify(f"팬 세기를 최대로 높여도 목표 {target} Pa에 못 미칩니다 "
                    f"(현재 {current:.1f} Pa) — 누기량이 많거나 개구부가 열려 있는지 "
                    f"확인하세요 ({failure_time:.0f}/{duration:.0f}초)")
         elif duty == 0 and error_pressure >= pressure_threshold:
             # PID duty 0 은 팬 정지가 아니라 duty_min(팬이 도는 최소 세기)이다.
             # 예전엔 '팬을 멈춰도'라고 알려서, 실제로는 팬이 최소로 돌고 있는데
             # 작업자가 센서·외풍 문제로 오진하게 만들었다.
-            notify(f"팬을 최소({duty_min}%)로 낮춰도 압력이 목표 {target} Pa를 "
+            notify(f"팬 세기를 최소({duty_min}%)로 낮춰도 압력이 목표 {target} Pa를 "
                    f"넘습니다 (현재 {current:.1f} Pa) — 외풍이나 센서 상태를 "
                    f"확인하세요 ({failure_time:.0f}/{duration:.0f}초)")
 
