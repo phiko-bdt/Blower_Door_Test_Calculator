@@ -315,13 +315,15 @@ class ReportPage(QWidget):
         """USB 유무를 확인해 복사 버튼을 켜고 끈다. 새로 꽂히면 안내 토스트."""
         self._usb = paths.usb_mounts() if self._can_copy else []
         present = bool(self._usb)
+        # 버튼을 먼저 보이게 해 위치가 잡히면, 토스트를 그 버튼 위에 붙인다.
+        self.usb_button.setVisible(present)
         # 없다가 새로 감지된 순간에만 한 번 알린다. 화면이 뜨기 전(__init__ 중
         # 첫 확인)이나 폴링마다 반복해 뜨지 않도록 isVisible 과 직전 상태로 건다.
         if present and not self._usb_present and self.isVisible():
             toast(self, "USB 연결 감지됨",
-                  "복사 버튼을 누르면 성적서가 복사됩니다.")
+                  "복사 버튼을 누르면 성적서가 복사됩니다.",
+                  anchor=self.usb_button)
         self._usb_present = present
-        self.usb_button.setVisible(present)
 
     def _copy_dest_name(self):
         """USB 에 남길 파일 이름 — 보관본과 같은 뜻있는 이름."""

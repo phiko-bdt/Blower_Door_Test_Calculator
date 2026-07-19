@@ -106,37 +106,60 @@ class Toast(QFrame):
         heading.setObjectName("ToastTitle")
         text = QLabel(body)
         text.setObjectName("ToastBody")
-        text.setWordWrap(True)
+        # 본문은 한 줄로 — 줄바꿈을 끄면 토스트가 문구 폭에 맞춰 넓어진다
+        text.setWordWrap(False)
 
         inner = QVBoxLayout(self)
-        inner.setContentsMargins(20, 13, 20, 13)
-        inner.setSpacing(3)
+        inner.setContentsMargins(24, 16, 24, 16)
+        inner.setSpacing(4)
         inner.addWidget(heading)
         inner.addWidget(text)
-        self.setMaximumWidth(460)
 
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self.deleteLater)
         self._duration = duration_ms
+        self._anchor = None
+        self._gap = 12
 
-    def popup(self):
-        """부모 위쪽 가운데에 띄우고 정해진 시간 뒤 스스로 사라진다."""
+    def popup(self, anchor=None, gap=12):
+        """정해진 시간 뒤 스스로 사라지는 알림을 띄운다.
+
+        anchor(위젯)를 주면 그 위젯 바로 위·오른쪽 맞춤으로 붙인다(예: USB 복사
+        버튼). 없으면 부모 위쪽 가운데. 배치는 레이아웃이 끝난 뒤로 미룬다 —
+        방금 보이게 된 앵커 버튼의 위치가 아직 안 잡혔을 수 있어서다.
+        """
+        self._anchor = anchor
+        self._gap = gap
+        QTimer.singleShot(0, self._place)
+
+    def _place(self):
         parent = self.parentWidget()
         if parent is None:
             return
         self.adjustSize()
-        x = max(0, (parent.width() - self.width()) // 2)
-        self.move(x, 24)
+        anchor = self._anchor
+        if anchor is not None and anchor.isVisible():
+            tl = anchor.mapTo(parent, anchor.rect().topLeft())
+            x = tl.x() + anchor.width() - self.width()   # 오른쪽 끝 맞춤
+            y = tl.y() - self.height() - self._gap        # 버튼 바로 위
+        else:
+            x = (parent.width() - self.width()) // 2
+            y = 24
+        x = max(12, min(x, parent.width() - self.width() - 12))
+        y = max(12, y)
+        self.move(x, y)
         self.show()
         self.raise_()
         self._timer.start(self._duration)
 
 
-def toast(parent, title, body, duration_ms=4500):
-    """가벼운 알림을 띄운다 (자동 소멸). 만든 Toast 를 돌려준다."""
+def toast(parent, title, body, duration_ms=4500, anchor=None):
+    """가벼운 알림을 띄운다 (자동 소멸). 만든 Toast 를 돌려준다.
+
+    anchor 를 주면 그 위젯 바로 위에 붙는다 (없으면 상단 가운데)."""
     t = Toast(parent, title, body, duration_ms)
-    t.popup()
+    t.popup(anchor=anchor)
     return t
 
 

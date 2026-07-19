@@ -400,13 +400,13 @@ QFrame#Toast {{
     border-radius: 10px;
 }}
 QLabel#ToastTitle {{
-    font-size: 15px;
+    font-size: 16px;
     font-weight: bold;
     color: #ffffff;
     background: transparent;
 }}
 QLabel#ToastBody {{
-    font-size: 13px;
+    font-size: 14px;
     color: {COLOR_ACCENT_SOFT};
     background: transparent;
 }}
