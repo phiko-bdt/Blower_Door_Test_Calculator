@@ -220,6 +220,9 @@ class ReportPage(QWidget):
         lay.addWidget(rule)
         lay.addStretch(1)
         lay.addWidget(self._wifi_block)
+        # 두 QR 사이를 넉넉히 벌린다 — 붙어 있으면 폰으로 찍을 때 옆 QR 이
+        # 같이 잡혀 어느 걸 스캔하는지 헷갈린다.
+        lay.addStretch(1)
         lay.addWidget(self._url_block)
         lay.addStretch(1)
         self.qr_panel.setVisible(False)
