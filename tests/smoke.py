@@ -30,7 +30,13 @@ from bdt import hardware, control, paths, settings, tasks, widgets  # noqa: E402
 
 DATA_FILES = ("conditions.json", "depressurization_raw.json",
               "pressurization_raw.json", "calculation_raw.json",
-              "settings.json", "fan_coefficients.json")
+              "settings.json", "fan_coefficients.json",
+              # 루트 산출물도 지킨다 — 스모크의 정상 경로 검사가 reporting 을
+              # 실제로 돌려 이 파일들을 가짜 측정으로 덮어쓰는데, graph.png
+              # md5·PDF 픽셀 비교(CLAUDE.md 검증 방법)의 기준선이 바로 이
+              # 파일들이라 복원하지 않으면 "수정 후 항상 스모크" 지침과
+              # 픽셀 불변 증명이 동시에 성립할 수 없다.
+              "report.pdf", "graph.png", "report_page.png")
 
 RESULTS = []
 

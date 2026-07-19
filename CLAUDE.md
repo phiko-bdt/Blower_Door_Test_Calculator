@@ -56,16 +56,21 @@
 - 압력센서: /dev/ttyUSB0, Modbus RTU. 응답 CRC 검증 필수 유지 — 프레임 어긋남이
   -3174 Pa 같은 유령값의 원인이었다.
 - 팬 전원은 수동 공급. duty 0 은 항상 안전, **duty>0 은 실제 팬이 돌므로 주의**.
-- 안전장치 4중: config.txt 펌웨어 LOW → bdt-fan-stop.service(부팅) →
+- 안전장치 5중: config.txt 펌웨어 LOW → bdt-fan-stop.service(부팅) →
   앱 종료 후행 `python3 -m bdt.fan_stop`(autostart 재시작 루프의 매 반복 +
-  수동 실행용 .desktop, 앱 크래시 대비) →
-  **bdt-fan-guard.service(상시 감시)**. 앞 셋은 특정 시점에 한 번씩만 duty 0 을
+  수동 실행용 .desktop, 앱 크래시 대비) → 앱 자체 atexit(hardware._shutdown_pwm)
+  → **bdt-fan-guard.service(상시 감시)**. 앞 넷은 특정 시점에 한 번씩만 duty 0 을
   거는데, 앱이 측정 중 SIGKILL 로 죽거나 래퍼 없이 직접 실행한 앱이 비정상
   종료하면 팬이 도는 채 남을 수 있다. 감시는 1초마다 `bdt.fan_guard.app_running`
   으로 `-m bdt` 프로세스 유무를 확인해(정확 매칭 — fan_stop·fan_guard 자신은
   앱으로 오인 안 함), **앱이 없으면 duty 0 을 강제한다.** 앱이 있으면 손대지
   않는다(측정 중 팬이 도는 게 정상). 설치: `sudo cp bdt-fan-guard.service
   /etc/systemd/system/ && sudo systemctl enable --now bdt-fan-guard`.
+  **fan_stop 도 같은 확인을 한다** — 앱이 실행 중이면 duty 를 건드리지 않고
+  0 으로 끝난다. 측정 중 바탕화면 아이콘을 다시 탭하면 두 번째 인스턴스가
+  중복 감지로 정상 종료하는데, 그 뒤의 후행 fan_stop 이 측정 중인 팬을 꺼
+  버리던 사고 경로를 막는다 (부팅·크래시 뒤처리 경로에서는 앱이 없어 그대로
+  duty 0 을 건다).
 
 ## 운용 결정 (되돌리기 전에 사용자와 상의)
 
@@ -104,6 +109,13 @@
     SSID·비번을 NM 에서 읽음) → ② 다운로드 주소 QR(`web.base_url` 이 **AP IP
     10.42.0.1 우선**, 없으면 일반 LAN IP 폴백). QR 은 segno(apt: python3-segno),
     없어도 주소 텍스트로 폴백.
+  - **캡티브 포털**: ① 만 스캔해 AP 에 붙으면 성적서 목록이 자동으로 뜬다 —
+    dnsmasq 드롭인(`captive/dnsmasq-captive.conf`)이 AP 망의 모든 도메인을
+    10.42.0.1 로 답하고, `bdt-captive.service`(nftables, `captive/captive.nft`)가
+    AP 망 80→8080 을 리다이렉트해 폰의 '인터넷 확인' 요청이 성적서 목록으로
+    떨어진다. **② 는 그 자동 열림이 안 되는 폰을 위한 폴백**이며, 화면 캡션도
+    그렇게 적혀 있다("② 1번으로 목록이 안 열릴 때만"). 설치는 setup-hotspot.sh
+    가 한다.
   - **납품 vs 개발 인터페이스**: 납품은 **내장 wlan0 을 AP** 로 쓴다(USB 동글은
     뺀다). 현장엔 WiFi 가 없어 wlan0 은 인터넷에 안 물리고 AP 전용이며,
     hong_home 같은 저장된 WiFi 도 현장엔 없어 wlan0 이 자연히 AP 가 된다.
@@ -146,8 +158,9 @@
 ## 검증 방법
 
 - **회귀 스모크 (수정 후 항상)**: `QT_QPA_PLATFORM=offscreen python3 tests/smoke.py`
-  — 하드웨어 모킹 종단 26검사, 약 1분, 전부 통과 시 종료코드 0.
+  — 하드웨어 모킹 종단 검사(30여 개), 약 30초~1분, 전부 통과 시 종료코드 0.
   실데이터(conditions.json·raw·settings.json·fan_coefficients.json)와
+  루트 산출물(report.pdf·graph.png·report_page.png — 픽셀 비교의 기준선),
   산출물 폴더(measurements/·conditions/·graphs/…)는 백업 후 복원하며, 스모크가
   새로 만든 파일은 지운다 (스모크용 가짜 측정이 실측 기록과 섞이지 않게).
   성적서 보관함도 가짜 바탕화면(임시 폴더)으로 돌려 실제 바탕화면을 안 건든다.
