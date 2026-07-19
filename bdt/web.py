@@ -168,20 +168,50 @@ def captive_catch_all(_):
     return redirect("/", code=302)
 
 
+def _fmt_when(mtime):
+    return datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M") if mtime else ""
+
+
+def _report_row(rel, name, mtime):
+    href = "/download/" + rel.replace(os.sep, "/")
+    return (f'<li><a href="{html.escape(href)}">'
+            f'<span><span class="name">{html.escape(name)}</span>'
+            f'<div class="when">{_fmt_when(mtime)}</div></span>'
+            f'<span class="get">받기</span></a></li>')
+
+
 @app.route("/")
 def index():
-    rows = []
-    for rel, name, mtime in _archived_reports():
-        when = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M") if mtime else ""
-        href = "/download/" + rel.replace(os.sep, "/")
-        rows.append(
-            f'<li><a href="{html.escape(href)}">'
-            f'<span><span class="name">{html.escape(name)}</span>'
-            f'<div class="when">{when}</div></span>'
-            f'<span class="get">받기</span></a></li>')
-    listing = ("\n".join(rows)
-               or '<li class="empty">아직 발행된 성적서가 없습니다.</li>')
-    return Response(_PAGE.format(count=len(rows), listing=listing), mimetype="text/html")
+    """랜딩 — 방금 시험한(가장 최근) 성적서만 크게. 이전 것은 별도 페이지로."""
+    reports = _archived_reports()
+    if reports:
+        rel, name, mtime = reports[0]      # 최신 = 방금 시험
+        current = f"<ul>{_report_row(rel, name, mtime)}</ul>"
+    else:
+        current = '<div class="empty">아직 발행된 성적서가 없습니다.</div>'
+    older = len(reports) - 1
+    if older > 0:
+        more = (f'<a class="more" href="/history">'
+                f'이전 시험 성적서 보기 ({older}건) →</a>')
+    else:
+        more = ""
+    body = f'<div class="caption">방금 시험한 성적서</div>{current}{more}'
+    return Response(_PAGE.format(subtitle="방금 시험한 성적서를 받으세요",
+                                 body=body), mimetype="text/html")
+
+
+@app.route("/history")
+def history():
+    """이전 시험 성적서 — 방금 것 빼고 최신순 전체."""
+    reports = _archived_reports()[1:]      # 최신 1건(방금 것) 제외
+    rows = "".join(_report_row(*r) for r in reports)
+    listing = (f'<a class="back" href="/">← 방금 성적서로</a>'
+               f'<div class="caption">받을 성적서를 누르세요 ↓</div>'
+               f'<ul>{rows}</ul>') if rows else (
+               '<a class="back" href="/">← 방금 성적서로</a>'
+               '<div class="empty">이전 시험 성적서가 없습니다.</div>')
+    return Response(_PAGE.format(subtitle="이전 시험 성적서",
+                                 body=listing), mimetype="text/html")
 
 
 @app.route("/download/<path:relpath>")
@@ -221,15 +251,19 @@ _PAGE = """<!doctype html>
           padding: 9px 16px; white-space: nowrap; }}
   .empty {{ background: #fff; border: 1px solid #e4e8ee; border-radius: 10px;
             padding: 24px; text-align: center; color: #5b6672; }}
+  /* 이전 성적서 보기 — 외곽선 버튼 */
+  .more {{ display: block; text-align: center; text-decoration: none;
+           margin-top: 16px; padding: 14px; border-radius: 10px;
+           border: 1px solid #1f5fa8; color: #1f5fa8; font-weight: bold; }}
+  .more:active {{ background: #eef4fb; }}
+  .back {{ display: inline-block; text-decoration: none; color: #1f5fa8;
+           font-size: 14px; margin-bottom: 12px; }}
 </style></head>
 <body>
 <header><h1>기밀성능 시험 성적서</h1>
-<p>성적서 {count}건</p></header>
+<p>{subtitle}</p></header>
 <main>
-<div class="caption">받을 성적서를 누르세요 ↓</div>
-<ul>
-{listing}
-</ul>
+{body}
 </main>
 </body></html>
 """
