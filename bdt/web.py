@@ -74,6 +74,24 @@ def ap_ip():
     return None
 
 
+def lan_ssid():
+    """이 기기가 클라이언트로 붙어 있는 WiFi 의 SSID. AP(bdt-share) 자신은
+    제외한다. WiFi 에 안 붙어 있으면 None.
+
+    AP 없이 사무실 WiFi 등으로 쓸 때, 폰이 어느 망에 붙어야 성적서를 받는지
+    바로 알리려고 쓴다.
+    """
+    out = _nmcli("-t", "-f", "TYPE,NAME", "con", "show", "--active")
+    for line in out.splitlines():
+        typ, _, name = line.partition(":")
+        if "wireless" in typ and name and name != AP_CON:
+            ssid = _nmcli("-s", "-g", "802-11-wireless.ssid",
+                          "con", "show", name).strip()
+            if ssid:
+                return ssid
+    return None
+
+
 def ap_credentials():
     """(SSID, 비밀번호) — WiFi 접속 QR 에 쓴다. NetworkManager 에서 그대로 읽어
     AP 설정과 QR 이 어긋나지 않게 한다. 설정이 없으면 None."""

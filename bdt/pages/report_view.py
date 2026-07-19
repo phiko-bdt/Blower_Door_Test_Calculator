@@ -291,7 +291,12 @@ class ReportPage(QWidget):
         if ap_up:
             self.url_cap.setText("② ① 로 목록이 안 열릴 때만")
         else:
-            self.url_cap.setText("같은 WiFi 에 연결된 폰에서만")
+            # 폰이 어느 망에 붙어야 하는지 실제 SSID 로 알린다
+            ssid = web.lan_ssid()
+            if ssid:
+                self.url_cap.setText(f"'{ssid}' WiFi 의 폰에서만")
+            else:
+                self.url_cap.setText("같은 WiFi 에 연결된 폰에서만")
         if url != self._url_shown:
             self._set_qr(self.url_qr, self.url_sub, url,
                          url.replace("http://", "").rstrip("/"))
