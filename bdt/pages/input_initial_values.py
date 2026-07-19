@@ -48,8 +48,22 @@ class InputInitialValues(QWidget):
         root.setSpacing(14)
         self.setLayout(root)
 
+        # 동작 버튼(설정·저장)은 헤더 오른쪽에 둔다. 하단에 두면 화면 키보드가
+        # 뜰 때 버튼줄이 본문·키보드 사이 공간을 크게 잡아먹는다.
+        save_button = QPushButton("저장하고 시작")
+        save_button.setMinimumWidth(200)
+        save_button.clicked.connect(self.save_data)
+        # 설정은 시험 시작 전에만 바꿀 수 있게 여기에 둔다 (측정 중에 목표
+        # 압력이나 팬 보정식이 바뀌면 같은 시험 안에서 기준이 갈린다)
+        settings_button = QPushButton("설정")
+        settings_button.setObjectName("Secondary")
+        settings_button.setMinimumWidth(96)
+        settings_button.clicked.connect(self.settings_requested.emit)
+
         # 상단 제목 — 성적서 헤더와 같은 처리 (제목 + 영문 부제 + 규격 + accent 룰)
-        root.addWidget(PageHeader("기밀성능 시험", "Building Airtightness Test"))
+        root.addWidget(PageHeader("기밀성능 시험", "Building Airtightness Test",
+                                  actions=[settings_button, save_button],
+                                  show_standard=False))
 
         body = QWidget()
         body_layout = QVBoxLayout(body)
@@ -154,24 +168,6 @@ class InputInitialValues(QWidget):
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setWidget(body)
         root.addWidget(scroll, 1)
-
-        # 저장 버튼 (하단, 크게 — 터치용)
-        save_button = QPushButton("저장하고 시작")
-        save_button.setMinimumWidth(240)
-        save_button.clicked.connect(self.save_data)
-        # 설정은 시험 시작 전에만 바꿀 수 있게 여기에 둔다 (측정 중에 목표
-        # 압력이나 팬 보정식이 바뀌면 같은 시험 안에서 기준이 갈린다)
-        settings_button = QPushButton("설정")
-        settings_button.setObjectName("Secondary")
-        settings_button.setMinimumWidth(120)
-        settings_button.clicked.connect(self.settings_requested.emit)
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(12)
-        btn_row.addStretch(1)
-        btn_row.addWidget(settings_button)
-        btn_row.addWidget(save_button)
-        btn_row.addStretch(1)
-        root.addLayout(btn_row)
 
     @staticmethod
     def _required_label(text):

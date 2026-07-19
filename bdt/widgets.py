@@ -197,7 +197,7 @@ class PageHeader(QWidget):
     성적서를 펼쳤을 때와 같은 인상을 화면에서도 주기 위한 것이다.
     """
 
-    def __init__(self, title, subtitle=""):
+    def __init__(self, title, subtitle="", actions=None, show_standard=True):
         super().__init__()
 
         title_label = QLabel(title)
@@ -211,23 +211,34 @@ class PageHeader(QWidget):
             subtitle_label.setObjectName("Subtitle")
             left.addWidget(subtitle_label)
 
-        standard = QLabel(STANDARD_NAME)
-        standard.setObjectName("Standard")
-        standard.setAlignment(Qt.AlignmentFlag.AlignRight)
-        note = QLabel(STANDARD_NOTE)
-        note.setObjectName("StandardNote")
-        note.setAlignment(Qt.AlignmentFlag.AlignRight)
-        right = QVBoxLayout()
-        right.setContentsMargins(0, 0, 0, 0)
-        right.setSpacing(1)
-        right.addWidget(standard)
-        right.addWidget(note)
-
         bar = QHBoxLayout()
         bar.setContentsMargins(0, 0, 0, 0)
         bar.addLayout(left)
         bar.addStretch(1)
-        bar.addLayout(right)
+        # 규격 표기(오른쪽). 동작 버튼과 나란히 두면 두 줄짜리 표기와 버튼의
+        # 상하 정렬이 어긋나 어색하므로, 버튼을 둔 페이지는 show_standard=False
+        # 로 뺀다 (규격은 성적서에 어차피 실린다).
+        if show_standard:
+            standard = QLabel(STANDARD_NAME)
+            standard.setObjectName("Standard")
+            standard.setAlignment(Qt.AlignmentFlag.AlignRight)
+            note = QLabel(STANDARD_NOTE)
+            note.setObjectName("StandardNote")
+            note.setAlignment(Qt.AlignmentFlag.AlignRight)
+            right = QVBoxLayout()
+            right.setContentsMargins(0, 0, 0, 0)
+            right.setSpacing(1)
+            right.addWidget(standard)
+            right.addWidget(note)
+            bar.addLayout(right)
+        # 오른쪽에 페이지 동작 버튼을 둘 수 있다 (예: 조건 입력의 설정·저장).
+        # 하단에 두면 화면 키보드가 뜰 때 공간을 크게 잡아먹어 상단으로 올린다.
+        if actions:
+            bar.addSpacing(24)
+            for i, widget in enumerate(actions):
+                if i:
+                    bar.addSpacing(12)
+                bar.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
 
         rule = QFrame()
         rule.setObjectName("TitleRule")
