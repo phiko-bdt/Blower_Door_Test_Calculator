@@ -195,10 +195,18 @@ class ReportPage(QWidget):
         ① 폰을 단말 WiFi 에 연결(WiFi QR) → ② 성적서 다운로드(주소 QR).
         AP(bdt-share)가 떠 있으면 두 단계, 사무실 WiFi 등에선 ②만 보인다.
         """
+        # 패널 제목 — 이 영역이 '폰으로 받는 곳'임을 먼저 알린다. 예전엔 곧바로
+        # '① …' 로 시작해 무엇을 하는 자리인지 안 잡혔다.
+        title = QLabel("폰으로 성적서 받기")
+        title.setObjectName("Section")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        rule = QFrame()
+        rule.setObjectName("SectionRule")
+
         self._wifi_block, self.wifi_qr, self.wifi_sub = self._qr_step(
-            "① 폰을 이 WiFi 에 연결")
+            "① 폰 카메라로 스캔 → 이 WiFi 에 연결")
         self._url_block, self.url_qr, self.url_sub = self._qr_step(
-            "② 스캔해 성적서 받기")
+            "② 연결됐으면 스캔 → 성적서 받기")
 
         self.qr_panel = QFrame()
         self.qr_panel.setObjectName("Card")
@@ -206,6 +214,8 @@ class ReportPage(QWidget):
         lay = QVBoxLayout(self.qr_panel)
         lay.setContentsMargins(14, 16, 14, 16)
         lay.setSpacing(12)
+        lay.addWidget(title)
+        lay.addWidget(rule)
         lay.addStretch(1)
         lay.addWidget(self._wifi_block)
         lay.addWidget(self._url_block)
