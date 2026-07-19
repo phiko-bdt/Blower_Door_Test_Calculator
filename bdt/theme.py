@@ -392,4 +392,28 @@ QWidget#Keyboard QPushButton#KeyDone {{
     background-color: {COLOR_ACCENT}; color: #ffffff; font-size: 16px;
     font-weight: bold; min-width: 100px;
 }}
+/* 스크롤바 — 기본 OS 스크롤바는 투박해 앱과 안 어울린다. 얇고 둥근 손잡이만
+   두고 화살표·트랙을 없애 성적서 같은 플랫한 인상을 맞춘다 (입력·설정·성적서
+   세 스크롤 영역 공통). */
+QScrollBar:vertical {{
+    background: transparent;
+    width: 10px;
+    margin: 2px 2px 2px 0px;
+}}
+QScrollBar:horizontal {{
+    background: transparent;
+    height: 10px;
+    margin: 0px 2px 2px 2px;
+}}
+QScrollBar::handle:vertical, QScrollBar::handle:horizontal {{
+    background: {COLOR_CHART_GRID};
+    border-radius: 4px;
+}}
+QScrollBar::handle:vertical {{ min-height: 40px; }}
+QScrollBar::handle:horizontal {{ min-width: 40px; }}
+QScrollBar::handle:hover {{ background: {COLOR_MUTED}; }}
+QScrollBar::add-line, QScrollBar::sub-line {{
+    width: 0px; height: 0px; background: none; border: none;
+}}
+QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
 """
