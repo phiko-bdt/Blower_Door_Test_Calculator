@@ -3,11 +3,21 @@
 # 설치: 이 파일을 ~/.config/labwc/autostart 로 복사한다 (labwc 는 세션 시작 때
 #       그 경로만 읽는다). 저장소의 이 사본이 원본이다.
 #
-# 앱이 어떤 이유로 끝나든(크래시 포함) 팬 duty 0 을 후행으로 보장한다.
-# sysfs PWM 설정은 프로세스가 죽어도 커널에 남아 팬이 마지막 duty 로 계속
-# 돌기 때문이다 (바탕화면 아이콘 BlowerDoorTest.desktop 과 같은 이유).
-# 부팅 초기의 팬 정지는 bdt-fan-stop.service 가 따로 맡는다 — 이쪽은 앱이
-# 죽은 뒤를 맡는다.
+# 크래시 시 자동 재시작:
+#   앱을 while 루프로 감싸 비정상 종료(코드 ≠ 0)면 다시 띄운다. GUI(Wayland)
+#   앱이라 일반 systemd 서비스로는 못 올려서(디스플레이가 없어 창이 안 뜬다)
+#   지금 잘 뜨는 이 세션 안에서 재시작한다. 판정 기준은 systemd 의
+#   Restart=on-failure 와 같다:
+#     - '종료' 버튼·중복 실행 → 앱이 exit 0 → 재시작하지 않는다(작업자가 끌 수
+#       있어야 한다).
+#     - 크래시·SIGKILL·미처리 예외 → exit ≠ 0 → 재시작한다.
+#   시작하자마자 반복해 죽으면(코드 버그 등) 백오프로 30초씩 쉬어 CPU·로그
+#   폭주를 막는다. 그 사이에도 팬은 bdt-fan-guard 가 duty 0 으로 유지한다.
+#
+# 앱이 어떤 이유로 끝나든(크래시 포함) 매 반복마다 팬 duty 0 을 후행으로
+# 보장한다. sysfs PWM 설정은 프로세스가 죽어도 커널에 남아 팬이 마지막 duty
+# 로 계속 돌기 때문이다. 부팅 초기의 팬 정지는 bdt-fan-stop.service 가 맡고,
+# 이쪽은 앱이 죽은 뒤(재시작 사이)를 맡는다.
 #
 # 서브셸 전체를 백그라운드로 돌린다. `&` 를 마지막 명령에만 붙이면 앱이 끝날
 # 때까지 세션 시작이 막힌다.
@@ -16,6 +26,16 @@
 # 부팅마다 덮어써 파일이 무한히 자라지 않게 한다.
 (
   cd /home/phiko/Blower_Door_Test_Calculator || exit
-  /usr/bin/python3 -m bdt
-  /usr/bin/python3 -m bdt.fan_stop
+  fails=0
+  while true; do
+    start=$(date +%s)
+    /usr/bin/python3 -m bdt
+    code=$?
+    /usr/bin/python3 -m bdt.fan_stop
+    [ "$code" -eq 0 ] && break
+    echo "[autostart] 앱이 코드 $code 로 비정상 종료 — 재시작" >&2
+    [ $(( $(date +%s) - start )) -ge 60 ] && fails=0
+    fails=$((fails + 1))
+    if [ "$fails" -ge 5 ]; then sleep 30; else sleep 2; fi
+  done
 ) > /home/phiko/bdt-autostart.log 2>&1 &
