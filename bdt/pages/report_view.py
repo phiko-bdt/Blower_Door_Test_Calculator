@@ -204,7 +204,7 @@ class ReportPage(QWidget):
         rule.setObjectName("SectionRule")
 
         self._wifi_block, self.wifi_qr, self.wifi_sub = self._qr_step(
-            "① 폰 카메라로 스캔 → 이 WiFi 에 연결")
+            "① 폰 카메라로 스캔 → WiFi 자동 연결")
         self._url_block, self.url_qr, self.url_sub = self._qr_step(
             "② 연결됐으면 스캔 → 성적서 받기")
 
@@ -248,8 +248,10 @@ class ReportPage(QWidget):
         if wifi and cred:
             self._wifi_block.setVisible(True)
             if wifi != self._wifi_shown:
+                # 비밀번호가 QR 에 박혀 있어 스캔하면 바로 붙는다. 아래 SSID·
+                # 비번은 QR 이 안 될 때 손으로 연결하는 예비 정보임을 밝힌다.
                 self._set_qr(self.wifi_qr, self.wifi_sub, wifi,
-                             f"{cred[0]}\n비밀번호 {cred[1]}")
+                             f"스캔하면 자동 연결\n(수동: {cred[0]} / {cred[1]})")
                 self._wifi_shown = wifi
         else:
             self._wifi_block.setVisible(False)
