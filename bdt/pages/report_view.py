@@ -168,7 +168,10 @@ class ReportPage(QWidget):
 
     # ── 폰 공유 QR (① WiFi 연결 → ② 스캔해 받기) ─────────────
     def _qr_step(self, caption_text):
-        """QR 한 단계 (캡션 + QR 그림 + 아래 설명). (블록, 이미지, 설명) 반환."""
+        """QR 한 단계 (캡션 + QR 그림 + 아래 설명).
+
+        (블록, 캡션, 이미지, 설명) 반환 — 캡션은 AP 유무에 따라 문구를 바꾼다.
+        """
         cap = QLabel(caption_text)
         cap.setObjectName("StatName")
         cap.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -187,7 +190,7 @@ class ReportPage(QWidget):
         v.addWidget(cap)
         v.addWidget(img)
         v.addWidget(sub)
-        return block, img, sub
+        return block, cap, img, sub
 
     def _qr_panel(self):
         """A4 지면 오른쪽 여백의 폰 공유 카드.
@@ -205,10 +208,10 @@ class ReportPage(QWidget):
 
         # 캡티브 포털: ① 만 스캔하면 WiFi 연결 후 성적서 목록이 자동으로 뜬다.
         # ② 는 자동으로 안 뜨는 폰(iOS 캡티브 브라우저 제한 등)을 위한 폴백.
-        self._wifi_block, self.wifi_qr, self.wifi_sub = self._qr_step(
-            "① 폰 카메라로 이 QR 스캔")
-        self._url_block, self.url_qr, self.url_sub = self._qr_step(
-            "② 목록이 안 열리면 이 QR")
+        self._wifi_block, self.wifi_cap, self.wifi_qr, self.wifi_sub = \
+            self._qr_step("① 폰 카메라로 이 QR 스캔")
+        self._url_block, self.url_cap, self.url_qr, self.url_sub = \
+            self._qr_step("② ① 로 목록이 안 열릴 때만")
 
         # 위·아래 사용법 — 각 QR 캡션은 '무엇을 스캔하나'만 말한다. 이 두 줄은
         # 전체 흐름(폰 카메라로 시작 → 목록에서 받기로 끝)을 감싸 안내한다.
@@ -260,8 +263,13 @@ class ReportPage(QWidget):
             self._wifi_shown = self._url_shown = None
             return
 
-        # ① WiFi 접속 QR — AP(bdt-share)가 떠 있을 때만
-        wifi = web.wifi_qr_payload()
+        # AP(bdt-share)가 '실제로 떠 있는지'는 IP 유무로 본다. 연결 설정만 있고
+        # 안 떠 있으면(ap_ip None) 접속 QR 을 보여줘선 안 된다 — 없는 망에
+        # 붙으라고 안내하는 꼴이 된다.
+        ap_up = web.ap_ip() is not None
+
+        # ① WiFi 접속 QR — AP 가 실제로 떠 있을 때만
+        wifi = web.wifi_qr_payload() if ap_up else None
         cred = web.ap_credentials() if wifi else None
         if wifi and cred:
             self._wifi_block.setVisible(True)
@@ -276,7 +284,14 @@ class ReportPage(QWidget):
             self._wifi_block.setVisible(False)
             self._wifi_shown = None
 
-        # ② 다운로드 주소 QR
+        # ② 다운로드 주소 QR — 캡션은 상황에 따라 다르다.
+        #   AP 있음: 폰이 AP 에 붙은 뒤 ① 자동 열림이 안 될 때의 폴백.
+        #   AP 없음: 폰이 '이미 같은 WiFi 에 있어야' 열린다 — 그렇지 않으면
+        #            스캔해도 접속이 안 되므로 전제 조건을 분명히 알린다.
+        if ap_up:
+            self.url_cap.setText("② ① 로 목록이 안 열릴 때만")
+        else:
+            self.url_cap.setText("같은 WiFi 에 연결된 폰에서만")
         if url != self._url_shown:
             self._set_qr(self.url_qr, self.url_sub, url,
                          url.replace("http://", "").rstrip("/"))
