@@ -181,6 +181,12 @@ _EN_ROWS = [
     list("zxcvbnm"),
 ]
 _NUM_ROWS = [list("789"), list("456"), list("123"), list("0.")]
+# 텍스트 칸에서 한/영 옆 버튼으로 여는 숫자·특수문자 레이어
+_SYM_ROWS = [
+    list("1234567890"),
+    list("@#₩%&-+()/"),
+    list(".,?!'\":;~"),
+]
 
 
 class OnScreenKeyboard(QWidget):
@@ -195,7 +201,8 @@ class OnScreenKeyboard(QWidget):
         self._composing = False
         self._hangul = True     # 한글/영문 토글
         self._shift = False
-        self._numeric = False
+        self._numeric = False   # 필드가 강제하는 숫자 키패드
+        self._symbol = False    # 텍스트 칸에서 연 숫자·특수문자 레이어
 
         self._grid_host = QVBoxLayout(self)
         self._grid_host.setContentsMargins(8, 6, 8, 8)
@@ -208,8 +215,11 @@ class OnScreenKeyboard(QWidget):
         return w if isinstance(w, QLineEdit) else None
 
     def set_numeric(self, numeric):
-        if numeric != self._numeric:
+        # 새 필드로 포커스가 옮겨질 때마다 문자 레이어로 돌아온다
+        if numeric != self._numeric or self._symbol or self._shift:
             self._numeric = numeric
+            self._symbol = False
+            self._shift = False
             self._build()
 
     def reset_compose(self):
@@ -272,6 +282,12 @@ class OnScreenKeyboard(QWidget):
         self._shift = not self._shift
         self._build()
 
+    def _toggle_symbol(self):
+        self.reset_compose()
+        self._symbol = not self._symbol
+        self._shift = False
+        self._build()
+
     def _space(self):
         field = self._target()
         if field:
@@ -297,7 +313,9 @@ class OnScreenKeyboard(QWidget):
                 self._drop_layout(it.layout())
 
     def _btn(self, text, slot, kind=""):
-        b = QPushButton(text)
+        # QPushButton 은 '&' 를 니모닉 접두어로 먹으므로 표시용만 이스케이프.
+        # 실제 입력 문자는 slot 이 원본을 그대로 넣는다.
+        b = QPushButton(text.replace("&", "&&"))
         b.setObjectName("Key" + kind)
         b.setFocusPolicy(Qt.FocusPolicy.NoFocus)  # 입력창 포커스를 뺏지 않게
         b.clicked.connect(slot)
@@ -307,6 +325,8 @@ class OnScreenKeyboard(QWidget):
         self._clear()
         if self._numeric:
             self._build_numeric()
+        elif self._symbol:
+            self._build_symbol()
         else:
             self._build_text()
 
@@ -342,11 +362,28 @@ class OnScreenKeyboard(QWidget):
             if i == 2:           # 세 번째 줄 끝에 지우기
                 r.addWidget(self._btn("⌫", lambda: self._backspace(), "Mod"))
             self._grid_host.addLayout(r)
-        # 맨 아랫줄: 한/영 · 스페이스 · 완료
+        # 맨 아랫줄: !#1(기호) · 한/영 · 스페이스 · 완료
         bottom = QHBoxLayout()
         bottom.setSpacing(5)
-        bottom.addWidget(self._btn("한/영" if self._hangul else "한/영",
-                                   lambda: self._toggle_lang(), "Mod"))
+        bottom.addWidget(self._btn("!#1", lambda: self._toggle_symbol(), "Mod"))
+        bottom.addWidget(self._btn("한/영", lambda: self._toggle_lang(), "Mod"))
+        bottom.addWidget(self._btn("스페이스", lambda: self._space(), "Space"))
+        bottom.addWidget(self._btn("완료", lambda: self.done.emit(), "Done"))
+        self._grid_host.addLayout(bottom)
+
+    def _build_symbol(self):
+        for i, row in enumerate(_SYM_ROWS):
+            r = QHBoxLayout()
+            r.setSpacing(5)
+            for ch in row:
+                r.addWidget(self._btn(ch, lambda _=None, c=ch: self._key(c)))
+            if i == len(_SYM_ROWS) - 1:      # 마지막 줄 끝에 지우기
+                r.addWidget(self._btn("⌫", lambda: self._backspace(), "Mod"))
+            self._grid_host.addLayout(r)
+        # 맨 아랫줄: 가/A(문자로) · 스페이스 · 완료
+        bottom = QHBoxLayout()
+        bottom.setSpacing(5)
+        bottom.addWidget(self._btn("가·A", lambda: self._toggle_symbol(), "Mod"))
         bottom.addWidget(self._btn("스페이스", lambda: self._space(), "Space"))
         bottom.addWidget(self._btn("완료", lambda: self.done.emit(), "Done"))
         self._grid_host.addLayout(bottom)
