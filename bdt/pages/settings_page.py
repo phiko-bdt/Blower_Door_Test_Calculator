@@ -48,7 +48,24 @@ class SettingsPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(40, 20, 40, 20)
         root.setSpacing(14)
-        root.addWidget(PageHeader("시험 설정", "Test Settings"))
+
+        # 동작 버튼은 헤더 오른쪽에 둔다 — 하단에 두면 화면 키보드가 뜰 때
+        # 버튼줄이 폼을 좁게 눌러 편집 중 값·버튼이 답답하다 (조건 입력과 동일).
+        reset_button = QPushButton("기본값으로 되돌리기")
+        reset_button.setObjectName("Secondary")
+        reset_button.clicked.connect(self._reset_defaults)
+        cancel_button = QPushButton("취소")
+        cancel_button.setObjectName("Secondary")
+        cancel_button.setMinimumWidth(96)
+        cancel_button.clicked.connect(self.closed.emit)
+        save_button = QPushButton("저장")
+        save_button.setMinimumWidth(160)
+        save_button.clicked.connect(self._save)
+        # 규격 표기는 두 줄이라 버튼과 상하 정렬이 어긋나 뺀다 (성적서에 실림).
+        root.addWidget(PageHeader("시험 설정", "Test Settings",
+                                  actions=[reset_button, cancel_button,
+                                           save_button],
+                                  show_standard=False))
 
         hint = QLabel("여기서 바꾼 값은 다음 시험부터 바로 적용됩니다. "
                       "팬을 교체했거나 재보정했다면 보정식을 함께 고치세요.")
@@ -73,26 +90,6 @@ class SettingsPage(QWidget):
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setWidget(body)
         root.addWidget(scroll, 1)
-
-        # ── 버튼 줄 ────────────────────────────────────────────
-        reset_button = QPushButton("기본값으로 되돌리기")
-        reset_button.setObjectName("Secondary")
-        reset_button.clicked.connect(self._reset_defaults)
-        cancel_button = QPushButton("취소")
-        cancel_button.setObjectName("Secondary")
-        cancel_button.setMinimumWidth(120)
-        cancel_button.clicked.connect(self.closed.emit)
-        save_button = QPushButton("저장")
-        save_button.setMinimumWidth(180)
-        save_button.clicked.connect(self._save)
-
-        buttons = QHBoxLayout()
-        buttons.setSpacing(12)
-        buttons.addWidget(reset_button)
-        buttons.addStretch(1)
-        buttons.addWidget(cancel_button)
-        buttons.addWidget(save_button)
-        root.addLayout(buttons)
 
         self._fill(settings.load(), settings.load_fan_coefficients())
 
@@ -248,7 +245,7 @@ class SettingsPage(QWidget):
             lo, hi = settings.LIMITS[key]
             if not (lo <= value <= hi):
                 alert(self, "입력 오류",
-                      f"‘{name}’ 은 {self._fmt(lo)} ~ {self._fmt(hi)} {unit} "
+                      f"‘{name}’ 값은 {self._fmt(lo)} ~ {self._fmt(hi)} {unit} "
                       f"범위여야 합니다.\n입력한 값: {self._fmt(value)}")
                 self.fields[key].setFocus()
                 self.fields[key].selectAll()

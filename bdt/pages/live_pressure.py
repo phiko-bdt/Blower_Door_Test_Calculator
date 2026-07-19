@@ -80,7 +80,7 @@ class LivePressureData(QWidget):
 
         # 축 레이블 설정
         self.axis_x.setTitleText("시간 (s)")
-        self.axis_y.setTitleText("압력 (Pa)")
+        self.axis_y.setTitleText("압력차 Δp (Pa)")
         axis_font = QFont()
         axis_font.setPointSize(9)
         title_font = QFont()

@@ -180,7 +180,6 @@ _EN_ROWS = [
     list("asdfghjkl"),
     list("zxcvbnm"),
 ]
-_NUM_ROWS = [list("789"), list("456"), list("123"), list("0.")]
 # 문자·기호 레이어 오른쪽에 붙는 텐키 (넓은 가로폭 활용)
 _TENKEY_ROWS = [list("789"), list("456"), list("123"), ['0', '.', '⌫']]
 # 텍스트 칸에서 한/영 옆 버튼으로 여는 숫자·특수문자 레이어
@@ -333,17 +332,14 @@ class OnScreenKeyboard(QWidget):
             self._build_text()
 
     def _build_numeric(self):
-        for row in _NUM_ROWS:
-            r = QHBoxLayout()
-            r.setSpacing(6)
-            for ch in row:
-                r.addWidget(self._btn(ch, lambda _=None, c=ch: self._key(c)))
-            self._grid_host.addLayout(r)
-        tail = QHBoxLayout()
-        tail.setSpacing(6)
-        tail.addWidget(self._btn("⌫", lambda: self._backspace(), "Wide"))
-        tail.addWidget(self._btn("완료", lambda: self.done.emit(), "Done"))
-        self._grid_host.addLayout(tail)
+        # 숫자 칸은 0~9 · 점 · 지우기를 한 줄로만 둔다 — 문자가 없으니 아주
+        # 얇게. 확정/닫기는 헤더의 동작 버튼(저장 등)이 맡으므로 완료 키는 없다.
+        r = QHBoxLayout()
+        r.setSpacing(6)
+        for ch in "0123456789.":
+            r.addWidget(self._btn(ch, lambda _=None, c=ch: self._key(c)))
+        r.addWidget(self._btn("⌫", lambda: self._backspace()))
+        self._grid_host.addLayout(r)
 
     def _tenkey_column(self):
         """오른쪽에 붙는 텐키. 넓은 가로폭을 채우고 숫자 입력을 빠르게 한다."""

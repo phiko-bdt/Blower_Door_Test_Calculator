@@ -665,7 +665,7 @@ class BackgroundTask(QThread):
         if not result:
             # return 으로 끝내면 finished 만 나가 완료 화면이 '성적서가 표시
             # 됩니다'로 안내한다 — 파일은 없거나 이전 시험 것인데. 오류로 알린다.
-            raise RuntimeError("성적서 PDF 생성 실패했습니다.")
+            raise RuntimeError("성적서 PDF 를 만들지 못했습니다.")
         self.report("성적서 생성 완료: report.pdf")
         self.archive_report(pdf_path, conditions)
         self.render_report_image(pdf_path)
@@ -727,7 +727,7 @@ class BackgroundTask(QThread):
             os.remove(paths.REPORT_PNG)
         pdftoppm = shutil.which("pdftoppm")
         if not pdftoppm:
-            self.report("성적서 화면 출력 실패했습니다.")
+            self.report("성적서를 화면에 표시하지 못했습니다.")
             return
         # -singlefile: 이름 뒤에 페이지 번호를 붙이지 않는다 (성적서는 1페이지)
         stem = os.path.splitext(paths.REPORT_PNG)[0]
@@ -737,5 +737,5 @@ class BackgroundTask(QThread):
                     check=True, timeout=60,
                     stdout=sub.DEVNULL, stderr=sub.DEVNULL)
         except (sub.SubprocessError, OSError) as exc:
-            self.report("성적서 화면 출력 실패했습니다.")
+            self.report("성적서를 화면에 표시하지 못했습니다.")
 

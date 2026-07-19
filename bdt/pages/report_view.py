@@ -111,7 +111,7 @@ class ReportPage(QWidget):
 
         # USB 복사 — USB 저장소가 꽂혀 있을 때만 뜬다. 성적서 화면이 떠 있는
         # 동안 꽂아도 나타나게 주기적으로 확인한다.
-        self.usb_button = QPushButton("USB로 복사")
+        self.usb_button = QPushButton("USB 로 복사")
         self.usb_button.setObjectName("Secondary")
         self.usb_button.setMinimumWidth(150)
         self.usb_button.clicked.connect(self._copy_to_usb)
@@ -211,7 +211,7 @@ class ReportPage(QWidget):
         self._wifi_block, self.wifi_cap, self.wifi_qr, self.wifi_sub = \
             self._qr_step("① 폰 카메라로 이 QR 스캔")
         self._url_block, self.url_cap, self.url_qr, self.url_sub = \
-            self._qr_step("② ① 로 목록이 안 열릴 때만")
+            self._qr_step("② ①번으로 목록이 안 열릴 때만")
 
         # 위·아래 사용법 — 각 QR 캡션은 '무엇을 스캔하나'만 말한다. 이 두 줄은
         # 전체 흐름(폰 카메라로 시작 → 목록에서 받기로 끝)을 감싸 안내한다.
@@ -289,7 +289,7 @@ class ReportPage(QWidget):
         #   AP 없음: 폰이 '이미 같은 WiFi 에 있어야' 열린다 — 그렇지 않으면
         #            스캔해도 접속이 안 되므로 전제 조건을 분명히 알린다.
         if ap_up:
-            self.url_cap.setText("② ① 로 목록이 안 열릴 때만")
+            self.url_cap.setText("② ①번으로 목록이 안 열릴 때만")
         else:
             # 폰이 어느 망에 붙어야 하는지 실제 SSID 로 알린다
             ssid = web.lan_ssid()
