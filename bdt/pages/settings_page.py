@@ -189,12 +189,11 @@ class SettingsPage(QWidget):
             duty_row.addWidget(edit)
             if key == "duty_min":
                 duty_row.addWidget(QLabel("~"))
-        # 최소를 너무 낮게 잡으면 팬이 멈춘다는 게 이 값의 유일한 함정이라
-        # 툴팁으로 남기고, 화면에는 한 줄만 둔다
-        duty_hint = QLabel("PID 가 팬을 돌리는 범위 · 보정식이 유효한 범위")
+        # 최소를 너무 낮게 잡으면 팬이 멈춘다는 게 이 값의 유일한 함정이다.
+        # 터치 단말에는 툴팁이 뜨지 않으므로 경고를 힌트 줄에 그대로 싣는다.
+        duty_hint = QLabel("PID 가 팬을 돌리는 범위 · 최소는 팬이 확실히 도는 "
+                           "값으로 (너무 낮으면 팬이 멈춥니다)")
         duty_hint.setObjectName("Hint")
-        duty_hint.setToolTip("최소는 팬이 확실히 도는 값으로 잡으세요 "
-                             "(너무 낮으면 팬이 멈춥니다).")
         duty_row.addWidget(duty_hint, 1)
         outer.addLayout(duty_row)
         return card

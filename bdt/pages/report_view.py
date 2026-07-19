@@ -335,6 +335,10 @@ class ReportPage(QWidget):
                                  f"WiFi 연결 후 목록 자동 열림\n"
                                  f"(수동: {cred[0]} / {cred[1]})")
                     self._wifi_shown = wifi
+                    # ① 이 이제 막 생겼다 — ② 캡션이 "1번으로…" 를 가리켜도
+                    # 되도록 아래 갱신 블록을 강제로 태운다 (nmcli 추가 호출
+                    # 없음 — ap_up 경로의 캡션은 고정 문구다).
+                    self._url_shown = None
             self._wifi_block.setVisible(self._wifi_shown is not None)
         else:
             self._wifi_block.setVisible(False)
@@ -347,8 +351,12 @@ class ReportPage(QWidget):
             #   AP 있음: 폰이 AP 에 붙은 뒤 ① 자동 열림이 안 될 때의 폴백.
             #   AP 없음: 폰이 '이미 같은 WiFi 에 있어야' 열린다 — 그렇지 않으면
             #            스캔해도 접속이 안 되므로 전제 조건을 분명히 알린다.
-            if ap_up:
+            if ap_up and self._wifi_shown is not None:
                 self.url_cap.setText("② 1번으로 목록이 안 열릴 때만")
+            elif ap_up:
+                # AP 는 떠 있는데 자격증명을 못 읽어 ① QR 이 없다 (드묾) —
+                # 존재하지 않는 1번을 가리키는 캡션은 헷갈린다.
+                self.url_cap.setText("단말 WiFi 에 연결한 폰에서 스캔")
             else:
                 # 폰이 어느 망에 붙어야 하는지 실제 SSID 로 알린다
                 ssid = web.lan_ssid()

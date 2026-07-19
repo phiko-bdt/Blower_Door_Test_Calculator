@@ -11,7 +11,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # ── 리소스 ──────────────────────────────────────────────
 FONT_PATH = os.path.join(ROOT, "NanumSquare_acL.ttf")
-ICON_PATH = os.path.join(ROOT, "icon.png")
+# (앱 아이콘 경로는 BlowerDoorTest.desktop 이 자체로 갖는다 — 여기엔 없다)
 
 # ── 설정·측정 원본(JSON) ────────────────────────────────
 CONDITIONS_JSON = os.path.join(ROOT, "conditions.json")

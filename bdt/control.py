@@ -140,8 +140,10 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
         duty = max(0, min(100, duty))
         # PID 제어용 duty에서 실제 duty값으로 변경
         duty_real = duty_transformation(duty, duty_min, duty_max)
-        # duty 값 적용
-        hardware.duty_set(duty_real, test=False)
+        # duty 값 적용 (여기까지 오면 test 는 항상 False — 위의 테스트 모드
+        # 조기 반환 때문 — 이지만, False 를 박아두면 조기 반환을 손대는 순간
+        # 개발 PC 에서 실제 PWM 을 건드리는 코드가 된다)
+        hardware.duty_set(duty_real, test=test)
         # 압력이 자리 잡길 기다리는 동안(delay) 짧은 주기로 읽는다.
         #
         # **이 값들로 유지 시간을 센다.** 예전엔 delay 가 끝난 뒤 스냅샷 하나로만

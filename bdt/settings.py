@@ -103,6 +103,13 @@ def load():
             lo, hi = LIMITS[key]
             if lo <= value <= hi:
                 values[key] = value
+    # 항목별 범위로는 못 잡는 조합 — 상한이 목표 이하면 목표에 정상 도달한
+    # 시험까지 '시험 불가'가 된다. 손으로 고친 파일·구버전 파일이 이 모순을
+    # 들고 올 수 있으므로, 상한을 기본값과 목표 중 큰 쪽으로 되돌린다
+    # (validate 는 저장 시점에 같은 조합을 아예 거부한다).
+    if values["max_pressure"] <= values["target_pressure"]:
+        values["max_pressure"] = max(DEFAULTS["max_pressure"],
+                                     values["target_pressure"] + 10.0)
     return values
 
 

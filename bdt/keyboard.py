@@ -355,6 +355,9 @@ class OnScreenKeyboard(QWidget):
         b = QPushButton(text.replace("&", "&&"))
         b.setObjectName("Key" + kind)
         b.setFocusPolicy(Qt.FocusPolicy.NoFocus)  # 입력창 포커스를 뺏지 않게
+        if text == "⌫":
+            # 길게 누르면 연속 삭제 — 긴 입력을 글자 수만큼 탭하지 않게
+            b.setAutoRepeat(True)
         b.clicked.connect(slot)
         return b
 

@@ -271,9 +271,10 @@ def duty_set(duty, test=True):
 
     # 입력 값을 정수(0~100)로 검증/정규화한다.
     # 숫자로 해석할 수 없는 값은 안전을 위해 0(팬 정지)으로 처리한다.
+    # (OverflowError: inf·1e400 류 — 손상된 보정 파일의 duty_range 가 만들 수 있다)
     try:
         duty_value = int(float(str(duty).strip()))
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, OverflowError):
         print("입력 값 오류로 duty를 0으로 설정합니다.")
         duty_value = 0
     # 허용 범위(0~100)를 벗어나면 잘라낸다.
@@ -290,6 +291,24 @@ def duty_set(duty, test=True):
     healthy = _verify_pin_level(duty_value)
 
     return 0 if healthy else -1
+
+
+def duty_is_zero(test=True):
+    """현재 PWM duty 가 0 인지 sysfs 에서 읽는다. 판단이 안 서면 None.
+
+    fan_guard 가 유휴 상태(앱 없음, 대부분의 시간)에서 1초마다
+    duty_set(0) → 핀 검증(pinctrl 서브프로세스 5회) 을 반복하지 않도록,
+    이미 0 이면 쓰기를 건너뛰는 용도. None 이면 호출부가 안전한 쪽
+    (duty 0 쓰기)을 택한다.
+    """
+    if test:
+        return True
+    try:
+        channel_dir = _get_pwm()
+        with open(os.path.join(channel_dir, "duty_cycle")) as f:
+            return int(f.read().strip()) == 0
+    except (OSError, ValueError, PWMUnavailable):
+        return None
 
 
 def _read_pin_level():

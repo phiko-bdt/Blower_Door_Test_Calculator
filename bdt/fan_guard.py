@@ -30,11 +30,15 @@ CHECK_INTERVAL = 1.0
 def is_app_cmdline(args):
     """명령줄 인자가 기밀성능 시험 앱(`python3 -m bdt`)인지 판정한다.
 
-    `-m` 바로 다음 인자가 **정확히 "bdt"** 여야 한다. 이 감시 장치
-    (`-m bdt.fan_guard`)나 부팅 정지(`-m bdt.fan_stop`)는 다음 인자가
-    "bdt.fan_guard"·"bdt.fan_stop" 이라 걸리지 않는다 — 부분 일치
-    (pgrep -f "bdt")로는 자기 자신을 앱으로 오인해 영영 duty 0 을 안 건다.
+    실행 파일이 python 계열이고, `-m` 바로 다음 인자가 **정확히 "bdt"**
+    여야 한다. 이 감시 장치(`-m bdt.fan_guard`)나 부팅 정지(`-m bdt.fan_stop`)
+    는 다음 인자가 "bdt.fan_guard"·"bdt.fan_stop" 이라 걸리지 않는다 —
+    부분 일치(pgrep -f "bdt")로는 자기 자신을 앱으로 오인해 영영 duty 0 을
+    안 건다. python 확인은 인자에 우연히 `-m bdt` 가 든 무관한 장수명
+    프로세스를 앱으로 오인(→ 감시 영구 무력화)하는 것을 막는다.
     """
+    if not args or not os.path.basename(args[0]).startswith("python"):
+        return False
     for i in range(len(args) - 1):
         if args[i] == "-m" and args[i + 1] == "bdt":
             return True
@@ -65,9 +69,12 @@ def main():
     while True:
         try:
             if not app_running():
-                # 앱이 없다 = 팬을 쥔 주인이 없다. duty 0 을 건다 (이미 0 이면
-                # 그대로 유지되는 무해한 쓰기). 앱이 있으면 팬은 앱이 관리한다.
-                hardware.duty_set(0, test=TEST_MODE)
+                # 앱이 없다 = 팬을 쥔 주인이 없다. duty 0 을 건다. 앱이
+                # 있으면 팬은 앱이 관리한다. 이미 0 으로 확인되면 손대지
+                # 않는다 — 유휴 상태 내내 1초마다 duty_set → 핀 검증
+                # (pinctrl 서브프로세스 5회) 을 반복하는 낭비를 줄인다.
+                if hardware.duty_is_zero(test=TEST_MODE) is not True:
+                    hardware.duty_set(0, test=TEST_MODE)
         except Exception:
             # 감시 장치는 절대 죽으면 안 된다 — 오류를 남기고 계속 돈다
             # (systemd Restart=always 도 있지만, 여기서 삼켜 재시작 폭주를 막는다).

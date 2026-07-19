@@ -22,6 +22,8 @@ from bdt.theme import (
     COLOR_CHART_GRID,
     COLOR_CHART_GRID_SOFT,
     COLOR_PLOT,
+    CHART_FONT_TITLE_PT,
+    CHART_FONT_AXIS_PT,
 )
 
 
@@ -85,7 +87,8 @@ class LivePressureData(QWidget):
         self.chart = QChart()
         self.chart.legend().setVisible(False)  # 계열이 하나뿐이라 범례는 두지 않는다
         self.chart.addSeries(self.series)
-        self.chart.setTheme(QChart.ChartTheme.ChartThemeLight)
+        # setTheme 은 부르지 않는다 — 테마 적용이 기존 커스텀 펜·축색을 덮을
+        # 수 있고, 다른 두 실시간 차트(targeting·live_chart)도 안 쓴다.
         # QChartView 는 QWidget 이라 전역 스타일시트의 배경색(COLOR_BG)을 받는다.
         # 그대로 두면 흰 카드 안에 회색 판이 얹힌 것처럼 보이므로, 차트가 직접
         # 팔레트 검증 기준 표면색(COLOR_PLOT)을 칠하게 한다.
@@ -102,7 +105,7 @@ class LivePressureData(QWidget):
         # 차트에 등장 애니메이션은 의미도 없다.
         self.chart.setAnimationOptions(QChart.AnimationOption.NoAnimation)
         chart_title_font = QFont()
-        chart_title_font.setPointSize(11)
+        chart_title_font.setPointSize(CHART_FONT_TITLE_PT)
         chart_title_font.setBold(True)
         self.chart.setTitleFont(chart_title_font)
         self.chart.setTitleBrush(QColor(COLOR_INK))
@@ -120,9 +123,9 @@ class LivePressureData(QWidget):
         self.axis_x.setTitleText("시간 (s)")
         self.axis_y.setTitleText("압력차 Δp (Pa)")
         axis_font = QFont()
-        axis_font.setPointSize(9)
+        axis_font.setPointSize(CHART_FONT_AXIS_PT)
         title_font = QFont()
-        title_font.setPointSize(9)
+        title_font.setPointSize(CHART_FONT_AXIS_PT)
         # 격자는 데이터 뒤로 물리되 화면에서 보이는 정도는 유지한다.
         # 글자색은 성적서 그래프와 같은 단계 (축 제목 INK, 틱 라벨 SUB).
         for ax in (self.axis_x, self.axis_y):

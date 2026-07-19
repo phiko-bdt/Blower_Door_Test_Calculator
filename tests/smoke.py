@@ -435,9 +435,14 @@ def main():
         from bdt.fan_guard import is_app_cmdline
         check("팬 감시 앱 판정 — 정확 매칭",
               is_app_cmdline(["python3", "-m", "bdt"])
+              and is_app_cmdline(["/usr/bin/python3", "-m", "bdt"])
               and not is_app_cmdline(["python3", "-m", "bdt.fan_stop"])
               and not is_app_cmdline(["python3", "-m", "bdt.fan_guard"])
-              and not is_app_cmdline(["python3", "app.py"]))
+              and not is_app_cmdline(["python3", "app.py"])
+              # 인자에 우연히 -m bdt 가 든 비파이썬 프로세스는 앱이 아니다
+              # (오인하면 감시가 영영 duty 0 을 안 건다)
+              and not is_app_cmdline(["nano", "-m", "bdt"])
+              and not is_app_cmdline([]))
 
         # ── 5. 종료 시 워커 정리 ────────────────────────────────
         print("5. 창 닫기 정리")

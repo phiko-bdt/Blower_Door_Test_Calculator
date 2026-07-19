@@ -15,7 +15,6 @@ from PyQt6.QtWidgets import (
     QFrame,
     QVBoxLayout,
     QHBoxLayout,
-    QPushButton,
     QProgressBar,
 )
 from PyQt6.QtCore import Qt, QTimer
@@ -191,19 +190,14 @@ class CalculationSummary(QWidget):
         self.bar.setRange(0, 0)  # 미확정 — 남은 시간을 알 수 없다
         self.bar.setTextVisible(False)
         self.bar.setFixedWidth(200)
-        # 시험 완료 후에만 나타난다. 없으면 다음 세대를 시험하려고
-        # 앱을 껐다 켜야 했다 (오류 화면에는 '처음으로'가 있었는데
-        # 정상 완료에는 없었다).
-        self.restart_button = QPushButton("새 시험 시작")
-        self.restart_button.setMinimumWidth(180)
-        self.restart_button.setVisible(False)
+        # '새 시험 시작' 버튼은 여기 두지 않는다 — reporting 이 끝나면 이
+        # 화면 자체가 ReportPage 로 교체되고, 그 화면이 버튼을 가진다.
 
         status_row = QHBoxLayout()
         status_row.setSpacing(14)
         status_row.addWidget(self.status)
         status_row.addStretch(1)
         status_row.addWidget(self.bar)
-        status_row.addWidget(self.restart_button)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(40, 24, 40, 24)
@@ -236,11 +230,3 @@ class CalculationSummary(QWidget):
     def set_progress(self, text):
         """뒤에서 도는 작업(그래프·성적서)의 진행 상황을 받는다."""
         self.status.setText(text)
-
-    def set_done(self):
-        """모든 작업이 끝났다 — 남은 값을 즉시 채우고 막대를 감춘다."""
-        self._timer.stop()
-        for row in self._rows:
-            row.fill()
-        self.bar.setVisible(False)
-        self.restart_button.setVisible(True)

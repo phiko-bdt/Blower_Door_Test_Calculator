@@ -479,10 +479,12 @@ class BackgroundTask(QThread):
                     {"duty": d, "std": sigma, "min": p_min, "max": p_max})
                 self.report_point(d, p, sigma)
                 before = d
-        except (hardware.SensorTimeout, TestCancelled):
+        except Exception:
             # 도중 실패·중단이어도 이미 확정한 지점들은 파일로 남긴다.
             # 본 raw 저장은 루프 완주 뒤에만 수행되므로, 여기서 남기지 않으면
             # 4~5분치 확정 측정값이 통째로 증발해 처음부터 재시험해야 한다.
+            # 센서 끊김·중단만이 아니라 PWM 오류 등 어떤 예외든 — 보존 취지가
+            # 예외 종류에 좌우될 이유가 없다. 저장 후 그대로 재던진다.
             if measuring["measured_value"]:
                 now = datetime.now().strftime("%y%m%d-%H%M%S")
                 partial = os.path.join(
@@ -530,96 +532,9 @@ class BackgroundTask(QThread):
         if not data.get("depressurization") and not data.get("pressurization"):
             raise RuntimeError("수행된 시험이 없어 계산할 수 없습니다.")
 
-        # 결과 저장 변수 선언
-        calculation_raw = {}
-        # 보고서 용 값 저장
-        calculation_raw["report"] = {}
-
-        # 저장 할 값 지정
-        need_to_save = ["C0",
-                        "n",
-                        "C0 range",
-                        "n range",
-                        "t",
-                        "variance of n",
-                        "variance of x",
-                        "mean x",
-                        "N",
-                        "measured values",
-                        "margin of error of y",
-                        "Q50",
-                        "ACH50",
-                        "AL50",
-                        "r^2",
-                        "Q50+-",
-                        "ACH50+-",
-                        "n+-",
-                        "C0+-",
-                        "interior_volume"]
-
-        need_to_report = ["Q50",
-                          "ACH50",
-                          "AL50",
-                          "C0",
-                          "n",
-                          "Q50+-",
-                          "C0+-",
-                          "n+-",
-                          "r^2",
-                          "interior_volume"]
-
-        # 감압 시험을 수행 한 경우
-        if data.get("depressurization"):
-            # 파일 불러오기
-            depressureization = calculation.BlowerDoorTestCalculator.from_file(
-                paths.DEPRESSURIZATION_RAW_JSON, paths.CONDITIONS_JSON)
-            # 결과 계산
-            results_depr = depressureization.calculate_results()
-            # Raw data 저장
-            now = datetime.now().strftime("%y%m%d-%H%M%S")
-            depr_path = os.path.join(paths.ensure_dir(paths.CALCULATIONS_DIR),
-                                     f"depressurization_{now}.json")
-            with open(depr_path, 'w') as file:
-                json.dump(results_depr, file, indent=4)
-            # 결과 값 변수 저장
-            calculation_raw['depressurization'] = {}
-            for i in results_depr.keys():
-                if i in need_to_save:
-                    calculation_raw['depressurization'][i]=results_depr[i]
-
-            for i in need_to_report:
-                report_key = i + "-"
-                calculation_raw["report"][report_key] = calculation_raw["depressurization"][i]
-
-        # 가압 시험을 수행 한 경우
-        if data.get("pressurization"):
-            # 파일 불러오기
-            pressureization = calculation.BlowerDoorTestCalculator.from_file(
-                paths.PRESSURIZATION_RAW_JSON, paths.CONDITIONS_JSON)
-            # 결과 계산
-            results_pres = pressureization.calculate_results()
-            # Raw data 저장
-            now = datetime.now().strftime("%y%m%d-%H%M%S")
-            pres_path = os.path.join(paths.ensure_dir(paths.CALCULATIONS_DIR),
-                                     f"pressurization_{now}.json")
-            with open(pres_path, 'w') as file:
-                json.dump(results_pres, file, indent=4)
-            # 결과 값 변수 저장
-            calculation_raw['pressurization'] = {}
-            for i in results_pres.keys():
-                if i in need_to_save:
-                    calculation_raw['pressurization'][i]=results_pres[i]
-
-            for i in need_to_report:
-                report_key = i + "+"
-                calculation_raw["report"][report_key] = calculation_raw["pressurization"][i]
-
-        # 감/가압 시험 모두 수행 한 경우, 평균 값 계산
-        if data.get("depressurization") and data.get("pressurization"):
-            calculation_raw["average"] = {}
-            for i in ["Q50", "ACH50", "AL50"]:
-                calculation_raw["report"][i + "_avg"] = (calculation_raw["depressurization"][i] \
-                                                        + calculation_raw["pressurization"][i])/2
+        # 계산 본문은 calculation.summarize_tests 하나다 — 예전엔 여기와
+        # calculation.__main__ 에 같은 90줄이 복제돼 미세하게 갈라졌었다.
+        calculation_raw = calculation.summarize_tests(data)
 
         with open(paths.CALCULATION_RAW_JSON, 'w') as file:
             json.dump(calculation_raw, file, indent=4)
@@ -737,5 +652,7 @@ class BackgroundTask(QThread):
                     check=True, timeout=60,
                     stdout=sub.DEVNULL, stderr=sub.DEVNULL)
         except (sub.SubprocessError, OSError) as exc:
+            # 원인을 남겨야 현장에서 진단할 수 있다 (타임아웃인지 손상 PDF 인지)
+            print(f"성적서 렌더 실패: {exc}")
             self.report("성적서를 화면에 표시하지 못했습니다.")
 

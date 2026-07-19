@@ -101,7 +101,7 @@ class TargetingPage(QWidget):
         # 갱신마다 애니메이션이 재시작돼 선이 영영 그려지지 않았다)
         self.chart.setAnimationOptions(QChart.AnimationOption.NoAnimation)
         title_font = QFont()
-        title_font.setPointSize(11)
+        title_font.setPointSize(theme.CHART_FONT_TITLE_PT)
         title_font.setBold(True)
         self.chart.setTitleFont(title_font)
         self.chart.setTitleBrush(QColor(theme.COLOR_INK))
@@ -109,7 +109,7 @@ class TargetingPage(QWidget):
         self.chart.legend().setVisible(True)
         self.chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
         legend_font = QFont()
-        legend_font.setPointSize(10)
+        legend_font.setPointSize(theme.CHART_FONT_LEGEND_PT)
         self.chart.legend().setFont(legend_font)
         self.chart.legend().setLabelColor(QColor(theme.COLOR_SUB))
 
@@ -120,7 +120,7 @@ class TargetingPage(QWidget):
         self.axis_y.setTitleText("압력차 Δp (Pa)")
         self.axis_y.setLabelFormat("%.0f")
         axis_font = QFont()
-        axis_font.setPointSize(9)
+        axis_font.setPointSize(theme.CHART_FONT_AXIS_PT)
         for ax in (self.axis_x, self.axis_y):
             ax.setLabelsFont(axis_font)
             ax.setTitleFont(axis_font)

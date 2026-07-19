@@ -2,8 +2,8 @@
 
 `python3 -m bdt.web` 로 실행하며, systemd 유닛 bdt-web.service 가 상시 띄운다.
 성적서 화면의 QR 코드가 이 서버 주소(http://<Pi IP>:8080)를 담아, 작업자가
-폰으로 스캔하면 바로 목록을 열어 성적서를 내려받는다. 폰에서 파일을 올릴
-수도 있다(받은파일 폴더).
+폰으로 스캔하면 바로 목록을 열어 성적서를 내려받는다. 내려받기 전용이다 —
+업로드 경로는 없다 (받는 쪽이 없는 서버가 공격면도 작다).
 
 **계정·비밀번호·클라우드가 없다.** Pi 와 같은 네트워크(현장 WiFi·폰 핫스팟)
 에만 있으면 된다. 그만큼 같은 네트워크의 누구나 접근할 수 있으니 — 성적서에
@@ -18,11 +18,12 @@ import socket
 import html
 import subprocess
 from datetime import datetime
+from urllib.parse import quote
 
 from flask import (Flask, send_from_directory, redirect,
                    abort, Response)
 
-from bdt import paths
+from bdt import paths, theme
 
 PORT = 8080
 # 이 단말이 띄우는 AP(핫스팟) NetworkManager 연결 이름. 전용 USB WiFi(wlan1)
@@ -31,8 +32,6 @@ PORT = 8080
 # 10.42.0.1 + DHCP.
 AP_CON = "bdt-share"
 app = Flask(__name__)
-# 성적서 PDF 는 작아도 폰 사진 업로드는 클 수 있어 여유를 둔다 (25 MB).
-app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
 
 
 def lan_ip():
@@ -152,7 +151,8 @@ def _archived_reports():
 # ── 캡티브 포털 ────────────────────────────────────────────────
 # 폰이 WiFi 에 붙으면 OS 가 '인터넷 되나' 확인 요청을 특정 주소로 보낸다
 # (안드로이드 generate_204, 애플 hotspot-detect.html 등). AP 의 dnsmasq 가
-# 모든 도메인을 10.42.0.1 로 돌리고 iptables 가 80→8080 을 넘기므로, 그
+# 모든 도메인을 10.42.0.1 로 돌리고 nftables(bdt-captive.service)가
+# 80→8080 을 넘기므로, 그
 # 요청들이 여기로 온다. 기대한 응답(204/Success) 대신 성적서 목록으로
 # 302 리다이렉트하면, 폰이 '로그인 페이지'로 여겨 성적서 목록을 자동으로
 # 띄운다 → QR ① 한 번으로 페이지까지 열린다.
@@ -192,7 +192,9 @@ def _fmt_when(mtime):
 
 
 def _report_row(rel, name, mtime):
-    href = "/download/" + rel.replace(os.sep, "/")
+    # URL 인코딩(quote): 수동으로 넣은 파일명에 # ? % 가 있어도 링크가
+    # 깨지지 않게 한다 (html.escape 는 HTML 특수문자만 다룬다).
+    href = "/download/" + quote(rel.replace(os.sep, "/"))
     return (f'<li><a href="{html.escape(href)}">'
             f'<span><span class="name">{html.escape(name)}</span>'
             f'<div class="when">{_fmt_when(mtime)}</div></span>'
@@ -215,8 +217,8 @@ def index():
     else:
         more = ""
     body = f'<div class="caption">방금 시험한 성적서</div>{current}{more}'
-    return Response(_PAGE.format(subtitle="방금 시험한 성적서를 받으세요",
-                                 body=body), mimetype="text/html")
+    return Response(_page("방금 시험한 성적서를 받으세요", body),
+                    mimetype="text/html")
 
 
 @app.route("/history")
@@ -229,8 +231,8 @@ def history():
                f'<ul>{rows}</ul>') if rows else (
                '<a class="back" href="/">← 방금 성적서로</a>'
                '<div class="empty">이전 시험 성적서가 없습니다.</div>')
-    return Response(_PAGE.format(subtitle="이전 시험 성적서",
-                                 body=listing), mimetype="text/html")
+    return Response(_page("이전 시험 성적서", listing),
+                    mimetype="text/html")
 
 
 @app.route("/download/<path:relpath>")
@@ -244,38 +246,50 @@ def download(relpath):
     return send_from_directory(root, relpath, as_attachment=True)
 
 
+# 색은 전부 theme 토큰이다 — 리터럴로 복제하면 앱·성적서 색을 바꿀 때
+# 폰 화면만 옛 색으로 남는다 (theme.py 는 Qt 무관 순수 문자열 모듈).
+_COLORS = {
+    "accent": theme.COLOR_ACCENT,
+    "accent_soft": theme.COLOR_ACCENT_SOFT,
+    "bg": theme.COLOR_BG,
+    "ink": theme.COLOR_INK,
+    "sub": theme.COLOR_SUB,
+    "line": theme.COLOR_LINE,
+    "surface": theme.COLOR_SURFACE,
+}
+
 _PAGE = """<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>기밀성능 시험 성적서</title>
 <style>
   body {{ font-family: -apple-system, "Noto Sans KR", sans-serif; margin: 0;
-         background: #f4f6f9; color: #1c2430; }}
-  header {{ background: #1f5fa8; color: #fff; padding: 18px 20px; }}
+         background: {bg}; color: {ink}; }}
+  header {{ background: {accent}; color: #fff; padding: 18px 20px; }}
   header h1 {{ margin: 0; font-size: 18px; }}
   header p {{ margin: 4px 0 0; font-size: 13px; opacity: .85; }}
   main {{ max-width: 720px; margin: 0 auto; padding: 16px; }}
-  .caption {{ color: #5b6672; font-size: 13px; margin: 4px 2px 10px; }}
+  .caption {{ color: {sub}; font-size: 13px; margin: 4px 2px 10px; }}
   ul {{ list-style: none; padding: 0; margin: 0; }}
   /* 각 줄이 통째로 다운로드 링크 — 어디를 눌러도 받아진다 */
   li a {{ display: flex; justify-content: space-between; align-items: center;
-          background: #fff; border: 1px solid #e4e8ee; border-radius: 10px;
+          background: {surface}; border: 1px solid {line}; border-radius: 10px;
           margin-bottom: 10px; padding: 16px; text-decoration: none;
-          color: #1c2430; }}
-  li a:active {{ background: #eef4fb; }}
-  .name {{ font-weight: bold; color: #1c2430; word-break: break-all; }}
-  .when {{ color: #5b6672; font-size: 12px; margin-top: 3px; }}
-  .get {{ flex: none; margin-left: 12px; background: #1f5fa8; color: #fff;
+          color: {ink}; }}
+  li a:active {{ background: {accent_soft}; }}
+  .name {{ font-weight: bold; color: {ink}; word-break: break-all; }}
+  .when {{ color: {sub}; font-size: 12px; margin-top: 3px; }}
+  .get {{ flex: none; margin-left: 12px; background: {accent}; color: #fff;
           font-size: 14px; font-weight: bold; border-radius: 8px;
           padding: 9px 16px; white-space: nowrap; }}
-  .empty {{ background: #fff; border: 1px solid #e4e8ee; border-radius: 10px;
-            padding: 24px; text-align: center; color: #5b6672; }}
+  .empty {{ background: {surface}; border: 1px solid {line}; border-radius: 10px;
+            padding: 24px; text-align: center; color: {sub}; }}
   /* 이전 성적서 보기 — 외곽선 버튼 */
   .more {{ display: block; text-align: center; text-decoration: none;
            margin-top: 16px; padding: 14px; border-radius: 10px;
-           border: 1px solid #1f5fa8; color: #1f5fa8; font-weight: bold; }}
-  .more:active {{ background: #eef4fb; }}
-  .back {{ display: inline-block; text-decoration: none; color: #1f5fa8;
+           border: 1px solid {accent}; color: {accent}; font-weight: bold; }}
+  .more:active {{ background: {accent_soft}; }}
+  .back {{ display: inline-block; text-decoration: none; color: {accent};
            font-size: 14px; margin-bottom: 12px; }}
 </style></head>
 <body>
@@ -286,6 +300,10 @@ _PAGE = """<!doctype html>
 </main>
 </body></html>
 """
+
+
+def _page(subtitle, body):
+    return _PAGE.format(subtitle=subtitle, body=body, **_COLORS)
 
 
 def main():

@@ -1,7 +1,6 @@
 import math
 import json
 import statistics
-from pprint import pprint
 from scipy.stats import t
 from datetime import datetime
 import os
@@ -156,12 +155,12 @@ class BlowerDoorTestCalculator:
         self.val["P"] = self.atmospheric_pressure
         self.val["H"] = self.relative_humidity/100
 
-        # density(㎥/kg), 𝜌_𝑆𝑇𝑃 where STP: 23 degree celcius, 1atm
+        # density(kg/㎥), 𝜌_𝑆𝑇𝑃 where STP: 23 degree celcius, 1atm
         self.val["density at STP"] = 1.1919
         # Partial Pressure(Pa), 𝑃_𝑣𝑠=e^(59.484085−6790.4985/T−5.02802 ln⁡(𝑇))
         self.val["partial pressure"] = self.val["H"] * math.exp(59.484085 - (6790.4985 / self.val["T"])\
                                                                 - 5.02802 * math.log(self.val["T"]))
-        # density(㎥/kg), 𝜌_𝑎𝑖𝑟 = (𝑃_𝑏𝑎𝑟−0.37802∅𝑃_𝑣𝑠)/287.055𝑇
+        # density(kg/㎥), 𝜌_𝑎𝑖𝑟 = (𝑃_𝑏𝑎𝑟−0.37802∅𝑃_𝑣𝑠)/287.055𝑇
         self.val["density of air"] = (self.val["P"] - 0.37802 * self.val["partial pressure"]) / (287.055 * self.val["T"])
         # viscousity(Pa·s), 𝜇_𝑆𝑇𝑃 (not sure)
         self.val["viscousity at STP"] = 0.00001827
@@ -174,9 +173,12 @@ class BlowerDoorTestCalculator:
 
     def calculate_variance_and_confidence_values(self):
         # variance of 𝑛, 𝑠_𝑛
+        # 적합이 거의 완벽하면 (variance of y − n·covariance) 가 부동소수 오차로
+        # 미세 음수가 되어 sqrt 가 ValueError 로 죽는다 — 0 으로 클램프한다.
+        residual = max(0.0, self.val["variance of y"]
+                       - self.val["n"] * self.val["covariance"])
         self.val["variance of n"] = 1 / math.sqrt(self.val["variance of x"]) \
-                                    * math.sqrt((self.val["variance of y"] \
-                                                - self.val["n"] * self.val["covariance"]) / (self.val["N"] - 2))
+                                    * math.sqrt(residual / (self.val["N"] - 2))
         # variance of ln⁡(𝐶), 𝑠_ln⁡(𝐶)
         self.val["variance of ln(C)"] = self.val["variance of n"] * math.sqrt(self.val["mean squared of x"])
         # t table value for N-2 and alpha
@@ -250,107 +252,68 @@ class BlowerDoorTestCalculator:
         return self.val
 
 
-if __name__ == '__main__':
+# calculation_raw 로 남길 값과 성적서(report)에 실을 값.
+# (예전 목록에 있던 "ACH50+-" 는 어디서도 계산되지 않는 죽은 항목이라 뺐다 —
+#  결과 dict 에 존재한 적이 없어 산출 파일은 그대로다.)
+NEED_TO_SAVE = ["C0", "n", "C0 range", "n range", "t",
+                "variance of n", "variance of x", "mean x", "N",
+                "measured values", "margin of error of y",
+                "Q50", "ACH50", "AL50", "r^2",
+                "Q50+-", "n+-", "C0+-", "interior_volume"]
 
-    # 시험 조건 불러오기
-    conditions = paths.CONDITIONS_JSON
-    with open(conditions, 'r') as file:
-        data = json.load(file)
+NEED_TO_REPORT = ["Q50", "ACH50", "AL50", "C0", "n",
+                  "Q50+-", "C0+-", "n+-", "r^2", "interior_volume"]
 
-    # 아무 시험 결과 없는 경우, Just in case.
-    if not data.get("depressurization") and not data.get("pressurization"):
-        pass
 
-    # 결과 저장 변수 선언
-    calculation_raw = {}
-    # 보고서 용 값 저장
-    calculation_raw["report"] = {}
+def summarize_tests(data):
+    """수행한 시험(감압/가압)의 raw 를 계산해 calculation_raw dict 로 묶는다.
 
-    # 저장 할 값 지정
-    need_to_save = ["C0",
-                    "n",
-                    "C0 range",
-                    "n range",
-                    "t",
-                    "variance of n",
-                    "variance of x",
-                    "mean x",
-                    "N",
-                    "measured values",
-                    "margin of error of y",
-                    "Q50",
-                    "ACH50",
-                    "AL50",
-                    "r^2",
-                    "Q50+-",
-                    "ACH50+-",
-                    "n+-",
-                    "C0+-",
-                    "interior_volume"]
-
-    need_to_report = ["Q50",
-                      "ACH50",
-                      "AL50",
-                      "C0",
-                      "n",
-                      "Q50+-",
-                      "C0+-",
-                      "n+-",
-                      "r^2",
-                      "interior_volume"]
-
-    # 감압 시험을 수행 한 경우
-    if data.get("depressurization"):
-        # 파일 불러오기
-        depressureization = BlowerDoorTestCalculator.from_file(paths.DEPRESSURIZATION_RAW_JSON,
-                                                               paths.CONDITIONS_JSON)
-        # 결과 계산
-        results_depr = depressureization.calculate_results()
-        # Raw data 저장
+    앱(tasks.calculation)과 수동 재계산(`python3 -m bdt.calculation`)이 같은
+    본문을 90줄씩 복제하다 미세하게 갈라졌던 것을 한 곳으로 모았다.
+    성적서 키는 감압 = 접미사 '-', 가압 = '+', 둘 다면 평균 '_avg'.
+    """
+    calculation_raw = {"report": {}}
+    for test, suffix, raw_path in (
+            ("depressurization", "-", paths.DEPRESSURIZATION_RAW_JSON),
+            ("pressurization", "+", paths.PRESSURIZATION_RAW_JSON)):
+        if not data.get(test):
+            continue
+        calculator = BlowerDoorTestCalculator.from_file(raw_path,
+                                                        paths.CONDITIONS_JSON)
+        results = calculator.calculate_results()
+        # 계산 결과 원본을 시각 파일로 백업
         now = datetime.now().strftime("%y%m%d-%H%M%S")
-        calculations_dir = paths.ensure_dir(paths.CALCULATIONS_DIR)
-        with open(os.path.join(calculations_dir, f"depressurization_{now}.json"), 'w') as file:
-            json.dump(results_depr, file, indent=4)
-        # 결과 값 변수 저장
-        calculation_raw['depressurization'] = {}
-        for i in results_depr.keys():
-            if i in need_to_save:
-                calculation_raw['depressurization'][i]=results_depr[i]
+        out_path = os.path.join(paths.ensure_dir(paths.CALCULATIONS_DIR),
+                                f"{test}_{now}.json")
+        with open(out_path, 'w') as file:
+            json.dump(results, file, indent=4)
+        calculation_raw[test] = {k: v for k, v in results.items()
+                                 if k in NEED_TO_SAVE}
+        for key in NEED_TO_REPORT:
+            calculation_raw["report"][key + suffix] = calculation_raw[test][key]
 
-        for i in need_to_report:
-            report_key = i + "-"
-            calculation_raw["report"][report_key] = calculation_raw["depressurization"][i]
-
-    # 가압 시험을 수행 한 경우
-    if data.get("pressurization"):
-        # 파일 불러오기
-        pressureization = BlowerDoorTestCalculator.from_file(paths.PRESSURIZATION_RAW_JSON,
-                                                             paths.CONDITIONS_JSON)
-        # 결과 계산
-        results_pres = pressureization.calculate_results()
-        # Raw data 저장
-        now = datetime.now().strftime("%y%m%d-%H%M%S")
-        calculations_dir = paths.ensure_dir(paths.CALCULATIONS_DIR)
-        with open(os.path.join(calculations_dir, f"pressurization_{now}.json"), 'w') as file:
-            json.dump(results_pres, file, indent=4)
-        # 결과 값 변수 저장
-        calculation_raw['pressurization'] = {}
-        for i in results_pres.keys():
-            if i in need_to_save:
-                calculation_raw['pressurization'][i]=results_pres[i]
-
-        for i in need_to_report:
-            report_key = i + "+"
-            calculation_raw["report"][report_key] = calculation_raw["pressurization"][i]
-
-    # 감/가압 시험 모두 수행 한 경우, 평균 값 계산
+    # 감/가압 모두 수행 시 평균 값
     if data.get("depressurization") and data.get("pressurization"):
         calculation_raw["average"] = {}
-        for i in ["Q50", "ACH50", "AL50"]:
-            calculation_raw["report"][i + "_avg"] = (
-                calculation_raw["depressurization"][i]
-                + calculation_raw["pressurization"][i]
-            ) / 2
+        for key in ("Q50", "ACH50", "AL50"):
+            calculation_raw["report"][key + "_avg"] = (
+                calculation_raw["depressurization"][key]
+                + calculation_raw["pressurization"][key]) / 2
+    return calculation_raw
 
+
+if __name__ == '__main__':
+    # 수동 재계산 경로 — 앱과 같은 본문(summarize_tests)을 쓴다.
+    with open(paths.CONDITIONS_JSON, 'r') as file:
+        data = json.load(file)
+
+    if not data.get("depressurization") and not data.get("pressurization"):
+        raise SystemExit("수행된 시험이 없어 계산할 수 없습니다.")
+
+    # 실패 시 낡은 결과가 남지 않게 먼저 지운다 (tasks.calculation 과 동일)
+    if os.path.exists(paths.CALCULATION_RAW_JSON):
+        os.remove(paths.CALCULATION_RAW_JSON)
+
+    calculation_raw = summarize_tests(data)
     with open(paths.CALCULATION_RAW_JSON, 'w') as file:
         json.dump(calculation_raw, file, indent=4)

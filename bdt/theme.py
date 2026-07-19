@@ -46,6 +46,13 @@ COLOR_CHART_GRID_SOFT = "#e4e8ee"  # 보조 격자 (표면 대비 1.20:1)
 COLOR_CROSSHAIR = "#94a0ae"   # 기준선 (50 Pa)
 # (현재 위치 표시는 COLOR_INK 로 그린다 — 연한 색은 격자에 묻혔다)
 
+# 차트(QChart) 타이포그래피 크기(pt) — 실시간 화면 셋(live_pressure·
+# targeting·live_chart)이 공유한다. 색처럼 크기도 여기가 단일 소스다:
+# 한 차트만 고치면 셋이 어긋난다.
+CHART_FONT_TITLE_PT = 11   # 차트 제목
+CHART_FONT_LEGEND_PT = 10  # 범례
+CHART_FONT_AXIS_PT = 9     # 축 눈금·축 제목
+
 # ──────────────────────────────────────────────────────────────
 # 포인트 (accent) — 아껴 쓴다
 # ──────────────────────────────────────────────────────────────

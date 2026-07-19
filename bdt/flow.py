@@ -309,7 +309,10 @@ class TestFlow(QObject):
 
     def prepare(self, test):
         label = self.TESTS[test]
-        page = LivePressureData("측정 시작 버튼을 누르세요.")
+        # 어느 시험의 준비인지 본문에서도 말한다 — 감압+가압 연속 수행 시
+        # 헤더 강조만으로는 두 준비 화면이 똑같아 보인다 (조절·측정 화면은
+        # 제목에 시험명을 싣는데 준비만 빠져 있었다).
+        page = LivePressureData(f"{label} 시험 준비 — 측정 시작 버튼을 누르세요.")
         page.started.connect(lambda: self.measure(test))
         self.window.show_page(page, step=self.steps.index(label))
 
