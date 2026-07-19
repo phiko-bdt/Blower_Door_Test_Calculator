@@ -41,6 +41,20 @@ nmcli con modify "$CON" \
     wifi-sec.psk "$PASSWORD"
 nmcli con up "$CON"
 
+# 캡티브 포털: 폰이 붙으면 성적서 목록이 자동으로 뜨게 한다.
+#  - dnsmasq: AP 망의 모든 도메인을 10.42.0.1 로 (인터넷 확인 요청을 가로챔)
+#  - nftables(bdt-captive.service): AP 망 80→8080 리다이렉트
+HERE="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$HERE/captive/dnsmasq-captive.conf" ]; then
+    sudo cp "$HERE/captive/dnsmasq-captive.conf" /etc/NetworkManager/dnsmasq-shared.d/
+    sudo cp "$HERE/bdt-captive.service" /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now bdt-captive
+    # dnsmasq 새 설정 반영 위해 AP 재시작
+    nmcli con down "$CON" 2>/dev/null; sleep 1; nmcli con up "$CON"
+    echo "캡티브 포털 설치됨 (폰 붙으면 성적서 목록 자동)."
+fi
+
 echo "완료. IP:"
 ip -4 addr show "$IFACE" | grep -oE "inet [0-9.]+" | sed 's/^/  /'
-echo "폰이 '$SSID'(비번 $PASSWORD)에 붙어 http://<위 IP>:8080 에서 받는다."
+echo "폰이 '$SSID'(비번 $PASSWORD)에 붙으면 성적서 목록이 자동으로 뜬다."

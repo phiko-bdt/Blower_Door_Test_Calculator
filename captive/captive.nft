@@ -1,0 +1,10 @@
+# 성적서 AP 캡티브 포털 리다이렉트 (bdt-captive.service 가 로드).
+# AP 망(10.42.0.0/24)에서 오는 80 포트 → 8080(웹서버). 단말 자신·wlan0 무관.
+add table ip bdtnat
+delete table ip bdtnat
+table ip bdtnat {
+    chain prerouting {
+        type nat hook prerouting priority dstnat;
+        ip saddr 10.42.0.0/24 tcp dport 80 redirect to :8080
+    }
+}

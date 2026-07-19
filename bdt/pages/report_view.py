@@ -203,10 +203,12 @@ class ReportPage(QWidget):
         rule = QFrame()
         rule.setObjectName("SectionRule")
 
+        # 캡티브 포털: ① 만 스캔하면 WiFi 연결 후 성적서 목록이 자동으로 뜬다.
+        # ② 는 자동으로 안 뜨는 폰(iOS 캡티브 브라우저 제한 등)을 위한 폴백.
         self._wifi_block, self.wifi_qr, self.wifi_sub = self._qr_step(
-            "① 폰 카메라로 스캔 → WiFi 자동 연결")
+            "① 폰 카메라로 이 QR 스캔")
         self._url_block, self.url_qr, self.url_sub = self._qr_step(
-            "② 연결됐으면 스캔 → 성적서 받기")
+            "② 목록이 안 열리면 이 QR")
 
         self.qr_panel = QFrame()
         self.qr_panel.setObjectName("Card")
@@ -248,10 +250,11 @@ class ReportPage(QWidget):
         if wifi and cred:
             self._wifi_block.setVisible(True)
             if wifi != self._wifi_shown:
-                # 비밀번호가 QR 에 박혀 있어 스캔하면 바로 붙는다. 아래 SSID·
-                # 비번은 QR 이 안 될 때 손으로 연결하는 예비 정보임을 밝힌다.
+                # 스캔하면 WiFi 자동 연결(비번 QR 에 박힘) → 목록 자동 열림.
+                # 아래 SSID·비번은 QR 이 안 될 때 손으로 연결하는 예비 정보.
                 self._set_qr(self.wifi_qr, self.wifi_sub, wifi,
-                             f"스캔하면 자동 연결\n(수동: {cred[0]} / {cred[1]})")
+                             f"WiFi 연결 후 목록 자동 열림\n"
+                             f"(수동: {cred[0]} / {cred[1]})")
                 self._wifi_shown = wifi
         else:
             self._wifi_block.setVisible(False)

@@ -1,0 +1,17 @@
+[Unit]
+# 성적서 AP 캡티브 포털용 nftables — AP 망(10.42.0.0/24) 폰의 80 포트를
+# 8080(웹서버)로 넘긴다. 폰의 인터넷 확인 요청이 웹서버에 닿아 성적서
+# 목록이 자동으로 뜬다. 서브넷 기준이라 AP 인터페이스가 wlan0/wlan1 무엇이든
+# 동작하고, 단말 자신(wlan0 다른 서브넷)의 트래픽은 안 건드린다.
+# 전용 테이블(bdtnat)을 써서 다른 방화벽 규칙과 안 섞이고 깔끔히 지운다.
+Description=Blower Door Test: 성적서 AP 캡티브 포털 (80→8080 리다이렉트)
+After=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /home/phiko/Blower_Door_Test_Calculator/captive/captive.nft
+ExecStop=/usr/sbin/nft delete table ip bdtnat
+
+[Install]
+WantedBy=multi-user.target

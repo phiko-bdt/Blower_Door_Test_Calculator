@@ -133,6 +133,44 @@ def _archived_reports():
     return items
 
 
+# ── 캡티브 포털 ────────────────────────────────────────────────
+# 폰이 WiFi 에 붙으면 OS 가 '인터넷 되나' 확인 요청을 특정 주소로 보낸다
+# (안드로이드 generate_204, 애플 hotspot-detect.html 등). AP 의 dnsmasq 가
+# 모든 도메인을 10.42.0.1 로 돌리고 iptables 가 80→8080 을 넘기므로, 그
+# 요청들이 여기로 온다. 기대한 응답(204/Success) 대신 성적서 목록으로
+# 302 리다이렉트하면, 폰이 '로그인 페이지'로 여겨 성적서 목록을 자동으로
+# 띄운다 → QR ① 한 번으로 페이지까지 열린다.
+#
+# 주의: iOS 의 캡티브 브라우저(CNA)는 제한적이라 목록은 뜨지만 다운로드는
+# Safari 에서 열어야 할 수 있다. 그래도 목록·주소는 자동으로 보인다.
+_CAPTIVE_PATHS = (
+    "/generate_204", "/gen_204",              # Android
+    "/hotspot-detect.html",                    # iOS/macOS
+    "/library/test/success.html",              # iOS (구형)
+    "/connecttest.txt", "/ncsi.txt",           # Windows
+    "/canonical.html",                         # Firefox/기타
+)
+
+
+@app.route("/generate_204")
+@app.route("/gen_204")
+@app.route("/hotspot-detect.html")
+@app.route("/library/test/success.html")
+@app.route("/connecttest.txt")
+@app.route("/ncsi.txt")
+@app.route("/canonical.html")
+def captive_probe():
+    # 기대 응답을 일부러 안 주고 목록으로 보낸다 → OS 가 포털을 띄운다
+    return redirect("/", code=302)
+
+
+@app.errorhandler(404)
+def captive_catch_all(_):
+    # dnsmasq 가 모든 도메인을 우리에게 돌리므로 별별 주소가 다 온다.
+    # 모르는 건 전부 성적서 목록으로 보낸다 (포털 안에서 길 잃지 않게).
+    return redirect("/", code=302)
+
+
 @app.route("/")
 def index():
     rows = []
