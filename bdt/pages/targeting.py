@@ -58,7 +58,9 @@ class TargetingPage(QWidget):
         self.message_label.setObjectName("Message")
         self.progress = QLabel("팬 세기를 조절하고 있습니다…")
         self.progress.setObjectName("Hint")
-        self.progress.setWordWrap(True)
+        # 한 줄로 둔다 — 두 줄로 접히면 상단이 그만큼 높아진다 (측정 화면과
+        # 같은 결). 넘치면 끝을 …로 자른다.
+        self.progress.setWordWrap(False)
         head = QVBoxLayout()
         head.setSpacing(4)
         head.addWidget(self.message_label)
@@ -346,9 +348,12 @@ class TargetingPage(QWidget):
             y_hi = self.target + self.tolerance
             y_lo = self.target - self.tolerance
         else:
-            # 실패 유지 — 팬 한계에서 실제로 도달한 압력 주변을 칠한다.
-            # 목표 띠를 칠하면 닿지도 못한 범위를 유지 중이라고 오해시킨다.
-            level = self._samples[-1].y() if self._samples else self.target
+            # 실패 유지 — 팬 한계에서 도달한 압력 주변을 칠한다. 목표 띠를
+            # 칠하면 닿지도 못한 범위를 유지 중이라고 오해시킨다. 기준 압력은
+            # 유지 시작 때 고정한 _limit_level 을 쓴다 (매 읽음의 최신값을 쓰면
+            # 띠가 값을 따라 위아래로 흔들린다).
+            level = self._limit_level if self._limit_level is not None else (
+                self._samples[-1].y() if self._samples else self.target)
             y_hi, y_lo = level + self.tolerance * 0.35, level - self.tolerance * 0.35
         self._span(self._hold_hi, self._hold_lo,
                    float(self._hold_start_x), float(x1), y_hi, y_lo)
@@ -390,9 +395,16 @@ class TargetingPage(QWidget):
         if self._hold_kind != kind:
             self._hold_kind = kind
             self._hold_start_x = max(0, self._next_x - 1)
-            # 종류가 바뀌면 이전 종류의 흔적(팬 한계선)은 지운다 — 수렴으로
-            # 돌아왔는데 "팬 한계 도달" 선이 남아 있으면 상태를 오해시킨다.
-            if kind != "fail":
+            if kind == "fail":
+                # 실패 유지가 시작될 때 도달 압력을 '한 번' 고정한다. 매 읽음마다
+                # 갱신하면 팬 한계선과 유지 색칠 띠가 값을 따라 위아래로 흔들려,
+                # 채워지는 유지 바가 위아래로 움직이는 것처럼 보였다. 팬은 이미
+                # 한계에 붙어 압력이 거의 변하지 않으므로 시작값으로 고정한다.
+                self._limit_level = self._samples[-1].y() if self._samples else self.target
+                self._redraw_limit(self.axis_x.min(), self.axis_x.max())
+            else:
+                # 종류가 바뀌면 이전 종류의 흔적(팬 한계선)은 지운다 — 수렴으로
+                # 돌아왔는데 "팬 한계 도달" 선이 남아 있으면 상태를 오해시킨다.
                 self._limit_level = None
                 self._redraw_limit(self.axis_x.min(), self.axis_x.max())
             self._set_hold_style(kind)
@@ -402,11 +414,6 @@ class TargetingPage(QWidget):
         self.hold_name.setText(
             "수렴 유지" if kind == "converge" else "⚠ 팬 한계 유지")
         self._redraw_hold()
-
-        # 실패 유지 중이면 도달한 압력 수준을 기준선으로 보여준다
-        if kind == "fail" and self._samples:
-            self._limit_level = self._samples[-1].y()
-            self._redraw_limit(self.axis_x.min(), self.axis_x.max())
 
     def _set_hold_style(self, kind):
         """유지 색칠·막대 색을 종류에 맞춘다 (수렴=accent, 실패=경고색)."""

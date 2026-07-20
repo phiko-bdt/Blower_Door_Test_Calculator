@@ -1,17 +1,44 @@
 {
     "none": {
-        "forward": {"slope": 9.21069, "intercept": 935.46713},
-        "reverse": {"slope": 9.21069, "intercept": 935.46713},
-        "duty_range": [20, 100]
+        "forward": {
+            "slope": 9.21069,
+            "intercept": 935.467
+        },
+        "reverse": {
+            "slope": 9.21069,
+            "intercept": 935.467
+        },
+        "duty_range": [
+            21,
+            100
+        ]
     },
     "low": {
-        "forward": {"slope": 7.36855, "intercept": 748.3737},
-        "reverse": {"slope": 7.36855, "intercept": 748.3737},
-        "duty_range": [20, 100]
+        "forward": {
+            "slope": 7.36855,
+            "intercept": 748.3737
+        },
+        "reverse": {
+            "slope": 7.36855,
+            "intercept": 748.3737
+        },
+        "duty_range": [
+            20,
+            100
+        ]
     },
     "high": {
-        "forward": {"slope": 5.52641, "intercept": 561.2803},
-        "reverse": {"slope": 5.52641, "intercept": 561.2803},
-        "duty_range": [20, 100]
+        "forward": {
+            "slope": 5.52641,
+            "intercept": 561.2803
+        },
+        "reverse": {
+            "slope": 5.52641,
+            "intercept": 561.2803
+        },
+        "duty_range": [
+            20,
+            100
+        ]
     }
 }

@@ -14,7 +14,6 @@ from PyQt6.QtGui import QFont, QColor, QPen, QBrush, QPainter
 
 from bdt import hardware
 from bdt.config import TEST_MODE
-from bdt.scale import padded_range
 from bdt.theme import (
     COLOR_DEP,
     COLOR_INK,
@@ -29,6 +28,11 @@ from bdt.theme import (
 
 # 영기류(팬 정지) 압력의 허용 한계 (KS L ISO 9972 n항)
 ZERO_FLOW_LIMIT_PA = 3.0
+
+# 표시 압력 이동평균 창(점 수). 워커가 약 0.1초마다 읽으므로 8점 ≈ 0.8초.
+# 조절 화면 기본값(smooth_window=10)과 비슷한 결이되, 준비 화면은 판정이
+# 아니라 눈으로 안정 여부만 보므로 별도 상수로 둔다.
+SMOOTH_WINDOW = 8
 
 
 def _stop_poller(poller):
@@ -115,9 +119,15 @@ class LivePressureData(QWidget):
         self.axis_x = QValueAxis()
         self.axis_y = QValueAxis()
 
-        # 축 범위 설정
+        # 축 범위 설정. y(압력차)는 -1~101 로 고정하고 눈금을 0~100 에 10
+        # 단위로 앉힌다 — 예전엔 매 읽음마다 데이터에 맞춰 y 를 다시 잡아
+        # 선 전체가 위아래로 튀었다(뚝뚝 끊겨 보이던 원인). 축을 고정하면
+        # 값만 흐르고 배경은 가만히 있어 흐름이 매끄럽게 읽힌다.
         self.axis_x.setRange(0, 100)
-        self.axis_y.setRange(0, 100)
+        self.axis_y.setRange(-1, 101)
+        self.axis_y.setTickType(QValueAxis.TickType.TicksDynamic)
+        self.axis_y.setTickAnchor(0.0)
+        self.axis_y.setTickInterval(10.0)
 
         # 축 레이블 설정
         self.axis_x.setTitleText("시간 (s)")
@@ -139,7 +149,7 @@ class LivePressureData(QWidget):
             ax.setShadesVisible(False)
         self.axis_x.setTickCount(5)
         self.axis_x.setLabelFormat("%.0f")  # 초 단위에 소수점은 잡음이다
-        self.axis_y.setLabelFormat("%.1f")
+        self.axis_y.setLabelFormat("%.0f")
 
         self.chart.addAxis(self.axis_x, Qt.AlignmentFlag.AlignBottom)
         self.chart.addAxis(self.axis_y, Qt.AlignmentFlag.AlignLeft)
@@ -217,7 +227,10 @@ class LivePressureData(QWidget):
         # 앱이 즉사했다. 실패는 _on_failed 가 받아 타일로만 알린다.
         self.data = [QPointF(i, 0.0) for i in range(10)]
         self.series.replace(self.data)
-        self.rescale_y()
+        # 표시값 이동평균 버퍼. 원시 읽음은 바람·센서 노이즈로 들쭉날쭉해
+        # 선이 뚝뚝 끊겨 보였다. 조절 화면(control)과 같은 방식으로 최근
+        # 몇 점의 평균을 그린다 (판정이 아니라 표시용이라 단순 고정 창).
+        self._smooth_buf = []
 
         # 센서 읽기는 워커 스레드가 담당한다 (_SensorPoller 참고).
         # 페이지가 파괴될 때(측정으로 넘어가거나 오류·종료) 워커도 멈춘다 —
@@ -248,18 +261,12 @@ class LivePressureData(QWidget):
         else:
             self.started.emit()
 
-    def rescale_y(self):
-        """측정값이 항상 보이도록 y축 범위를 데이터에 맞춘다.
-
-        고정 범위(0~100)로 두면 팬 정지 상태의 0 Pa 선이 x축에 붙어
-        아무것도 표시되지 않는 것처럼 보인다. 눈금이 -48.5·-52.0 같은
-        어중간한 수로 찍히지 않도록 padded_range 로 예쁜 수에 맞춘다.
-        """
-        values = [point.y() for point in self.data]
-        low, high, ticks = padded_range(min(values), max(values),
-                                        pad=0.2, min_span=5.0, ticks=5)
-        self.axis_y.setRange(low, high)
-        self.axis_y.setTickCount(ticks)
+    def _smooth(self, value):
+        """최근 SMOOTH_WINDOW 점의 평균 (표시용 평활)."""
+        self._smooth_buf.append(value)
+        if len(self._smooth_buf) > SMOOTH_WINDOW:
+            self._smooth_buf.pop(0)
+        return sum(self._smooth_buf) / len(self._smooth_buf)
 
     def _set_stat(self, name, state):
         """스탯 타일의 이름·상태를 바꾼다 (변화 없으면 아무 것도 안 한다)."""
@@ -282,11 +289,12 @@ class LivePressureData(QWidget):
             print(message)
             self._sensor_ok = False
 
-    def _on_reading(self, new):
-        # 새로운 측정값을 데이터에 추가
+    def _on_reading(self, raw):
+        # 원시 읽음을 이동평균으로 매끄럽게 한 뒤 표시·판정에 같은 값을 쓴다
         if not self._sensor_ok:
             print("압력 센서 응답이 복구되었습니다.")
             self._sensor_ok = True
+        new = self._smooth(raw)
 
         # 영기류 압력 확인 (KS L ISO 9972 n항: 절대값 3 Pa 초과면 시험을
         # 수행하지 않는다). 이 화면은 팬 정지 상태의 준비 화면이라, 지금
@@ -303,6 +311,5 @@ class LivePressureData(QWidget):
             self.data.pop(0)
             self.axis_x.setRange(self.data[0].x(), self.data[-1].x())
 
-        # 시리즈와 축을 업데이트
+        # 시리즈를 갱신한다 (y축은 고정이라 다시 잡지 않는다)
         self.series.replace(self.data)
-        self.rescale_y()

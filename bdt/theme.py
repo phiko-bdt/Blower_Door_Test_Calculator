@@ -254,11 +254,15 @@ QLineEdit, QComboBox {{
     border: 1px solid {COLOR_LINE};
     border-radius: 8px;
 }}
-/* 필수 입력칸 — 라벨의 ＊ 와 함께 필수임을 알린다 */
+/* 필수 입력칸 — 옅은 accent 채움으로 알린다(라벨의 ＊ 와 함께). 예전엔
+   accent '테두리'로 표시했는데, 포커스 표시도 accent 테두리라 지금 입력 중인
+   칸과 구분이 안 됐다. 필수는 '채움', 포커스는 '진한 테두리'로 축을 나눈다. */
 QLineEdit[required="true"], QComboBox[required="true"] {{
-    border: 1.5px solid {COLOR_ACCENT};
+    background-color: {COLOR_ACCENT_SOFT};
+    border: 1px solid {COLOR_LINE};
 }}
-QLineEdit:focus, QComboBox:focus {{
+QLineEdit:focus, QComboBox:focus,
+QLineEdit[required="true"]:focus, QComboBox[required="true"]:focus {{
     border: 2px solid {COLOR_ACCENT};
 }}
 QLineEdit::placeholder {{ color: {COLOR_MUTED}; }}
@@ -330,15 +334,17 @@ QPushButton#HeaderQuit:hover {{
     color: {COLOR_DANGER};
     border-color: {COLOR_DANGER};
 }}
+/* 체크박스 — 상자뿐 아니라 글자까지가 터치 대상이다(Qt 기본). 손가락으로
+   누르기 쉽게 세로 여백을 키워 버튼(52px)에 준하는 높이를 준다. */
 QCheckBox {{
-    font-size: 15px;
-    spacing: 10px;
-    padding: 6px;
+    font-size: 16px;
+    spacing: 12px;
+    padding: 12px 10px;
     background: transparent;
 }}
 QCheckBox::indicator {{
-    width: 22px;
-    height: 22px;
+    width: 28px;
+    height: 28px;
     border: 1px solid {COLOR_LINE};
     border-radius: 5px;
     background: {COLOR_SURFACE};

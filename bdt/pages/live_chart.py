@@ -22,7 +22,6 @@ from PyQt6.QtGui import QFont, QColor, QPen, QBrush, QPainter
 
 from bdt import theme
 from bdt.widgets import confirm
-from bdt.scale import padded_range
 
 
 class LiveMeasurementChart(QWidget):
@@ -67,12 +66,14 @@ class LiveMeasurementChart(QWidget):
     # 시험의 기준 압력. 성적서 그래프처럼 항상 보이게 축에 포함시킨다.
     PRESSURE_REF = 50.0
 
-    # 측정점이 아직 없을 때 쓰는 씨앗 범위.
-    # 점이 들어오는 대로 rescale() 이 데이터에 맞춰 다시 잡는다.
-    # 누기량은 팬 개수에 비례하므로 팬 1개 기준 값에 팬 개수를 곱한다.
-    FLOW_MIN_PER_FAN, FLOW_MAX_PER_FAN = 800.0, 1600.0
-    # KS L ISO 9972 의 시험 압력 구간
-    PRESSURE_MIN, PRESSURE_MAX = 10.0, 100.0  # 압력차 (Pa)
+    # 누기량(y축) 고정 범위 — 팬 1개 기준. 팬 보정식(duty 20~100%)이 내는
+    # 누기량(약 1120~1860 ㎥/h)을 여유 있게 덮는다. 축은 데이터에 따라
+    # 움직이지 않고 오직 팬 개수에만 비례한다 (측정 중 축이 흔들리면 점이
+    # 어디로 가는지 눈으로 못 읽는다). 눈금 간격도 팬 개수에 비례해 항상
+    # 100 의 배수(1팬 100, 2팬 200)로 떨어진다.
+    FLOW_MIN_PER_FAN, FLOW_MAX_PER_FAN = 1000.0, 2000.0
+    # x축(압력차) 고정 범위 — KS L ISO 9972 시험 압력 구간을 0 부터 담는다.
+    PRESSURE_MIN, PRESSURE_MAX = 0.0, 100.0  # 압력차 (Pa)
 
     @classmethod
     def reset(cls):
@@ -83,34 +84,45 @@ class LiveMeasurementChart(QWidget):
     def __init__(self, initial_message="측정 중…", num_fans=1):
         super(LiveMeasurementChart, self).__init__()
 
-        # 측정점이 없을 때 쓸 씨앗 범위. 점이 들어오면 rescale() 이 데이터에 맞춰
-        # 다시 잡는다. 누기량은 팬 개수에 비례한다.
+        # 축은 고정이다 — y(누기량)는 팬 개수에만, x(압력차)는 늘 0~100 Pa.
+        # 누기량은 팬 개수에 비례한다. 눈금 간격도 팬 개수에 비례시켜(step)
+        # 항상 100 의 배수로 떨어지게 한다.
+        self.num_fans = num_fans
         self.flow_min = self.FLOW_MIN_PER_FAN * num_fans
         self.flow_max = self.FLOW_MAX_PER_FAN * num_fans
+        self.flow_step = 100.0 * num_fans
         self.x_lo, self.x_hi = self.PRESSURE_MIN, self.PRESSURE_MAX
         self._cursor = None  # 현재 위치 원의 자리 (압력, 풍량)
 
         self.label = QLabel(initial_message)
         self.label.setObjectName("Message")
         # 작업 진행 상황을 실시간으로 보여준다 (set_progress 로 갱신)
+        # 한 줄로 둔다 — 아래 막대와 나란히 놓아 상단을 두 줄로 압축한다.
         self.progress = QLabel("잠시만 기다려 주세요…")
         self.progress.setObjectName("Hint")
-        self.progress.setWordWrap(True)
+        self.progress.setWordWrap(False)
 
         # 끝이 정해진 일(안정화 대기·측정)의 남은 시간. 문구만으론 숫자가
-        # 줄지 않아 멈춘 건지 기다리는 건지 알 수 없었다.
+        # 줄지 않아 멈춘 건지 기다리는 건지 알 수 없었다. 남은 초는 progress
+        # 문구에 싣고, 그 옆에 채워지는 막대를 나란히 둔다.
         self.countdown_bar = QProgressBar()
         self.countdown_bar.setTextVisible(False)
         self.countdown_bar.setFixedHeight(6)
-        self.countdown_bar.setMaximumWidth(360)
+        self.countdown_bar.setMaximumWidth(280)
         self.countdown_bar.setRange(0, 1000)
         self.countdown_bar.setVisible(False)
 
+        # 2행: (1) 시험 메시지, (2) 진행 문구 + 남은시간 막대 나란히
+        prog_row = QHBoxLayout()
+        prog_row.setSpacing(12)
+        prog_row.addWidget(self.progress)
+        prog_row.addWidget(self.countdown_bar)
+        prog_row.addStretch(1)
+
         head = QVBoxLayout()
-        head.setSpacing(6)
+        head.setSpacing(3)
         head.addWidget(self.label)
-        head.addWidget(self.progress)
-        head.addWidget(self.countdown_bar)
+        head.addLayout(prog_row)
 
         # 시험 중단 — 몇 분씩 걸리는 측정을 화면에서 멈출 수단이 없으면
         # 잘못된 걸 알아채도 앱을 강제 종료하는 수밖에 없다.
@@ -159,16 +171,23 @@ class LiveMeasurementChart(QWidget):
         # 라벨을 달 수 있어 성적서에선 문제가 없다). 축에 숫자가 없는 실시간
         # 화면은 쓸모가 없다. 이 화면의 일은 "지금 어느 지점을 찍고 있는가"를
         # 보여주는 것이고, 회귀선 판독은 성적서가 맡는다.
+        # x축: 0~100 Pa 고정. 라벨은 20 단위(0·20·…·100), 보조선은 10 단위.
         self.axis_x = QValueAxis()
         self.axis_x.setTitleText("압력차 Δp (Pa)")
         self.axis_x.setLabelFormat("%.0f")
-        self.axis_x.setTickCount(6)
         self.axis_x.setRange(self.PRESSURE_MIN, self.PRESSURE_MAX)
+        self.axis_x.setTickType(QValueAxis.TickType.TicksDynamic)
+        self.axis_x.setTickAnchor(0.0)
+        self.axis_x.setTickInterval(20.0)
+        # y축: 팬 개수로만 정해지는 고정 범위. 라벨은 100×팬수 단위로 항상
+        # 100 의 배수에 떨어진다 (1팬 100, 2팬 200 간격).
         self.axis_y = QValueAxis()
         self.axis_y.setTitleText("누기량 (㎥/h)")
         self.axis_y.setLabelFormat("%.0f")
-        self.axis_y.setTickCount(6)
         self.axis_y.setRange(self.flow_min, self.flow_max)
+        self.axis_y.setTickType(QValueAxis.TickType.TicksDynamic)
+        self.axis_y.setTickAnchor(0.0)
+        self.axis_y.setTickInterval(self.flow_step)
         axis_font = QFont()
         axis_font.setPointSize(theme.CHART_FONT_AXIS_PT)
         title_ax_font = QFont()
@@ -179,10 +198,12 @@ class LiveMeasurementChart(QWidget):
             ax.setLabelsColor(QColor(self.C_TICK))
             ax.setTitleBrush(QColor(self.C_INK))
             ax.setGridLineColor(QColor(self.C_GRID_MAJOR))
-            # 주 눈금 사이 보조선 1개 — 주선보다 더 연하게 깔아 눈금 감각만 준다
-            ax.setMinorTickCount(1)
             ax.setMinorGridLineColor(QColor(self.C_GRID_MINOR))
             ax.setLinePenColor(QColor(self.C_GRID_MAJOR))
+        # 보조선: x 는 라벨 20 사이에 10 단위(1개), y 는 팬 2개일 때만 라벨
+        # 200 사이에 100 단위(1개) — 어느 팬 수에서도 격자가 100 에 떨어진다.
+        self.axis_x.setMinorTickCount(1)
+        self.axis_y.setMinorTickCount(num_fans - 1)
         self.chart.addAxis(self.axis_x, Qt.AlignmentFlag.AlignBottom)
         self.chart.addAxis(self.axis_y, Qt.AlignmentFlag.AlignLeft)
 
@@ -270,8 +291,8 @@ class LiveMeasurementChart(QWidget):
         chart_card_layout.addWidget(chart_view)
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(40, 20, 40, 28)
-        outer.setSpacing(18)
+        outer.setContentsMargins(40, 12, 40, 20)
+        outer.setSpacing(10)
         outer.addLayout(top_bar)
         outer.addWidget(chart_card, 1)
 
@@ -300,43 +321,12 @@ class LiveMeasurementChart(QWidget):
         self.countdown_bar.setVisible(True)
 
     def rescale(self):
-        """측정점에 맞춰 두 축 범위를 다시 잡는다.
+        """고정 축 위에서 기준선(50 Pa)과 현재 위치 원만 다시 그린다.
 
-        고정 범위(예전 0.1~100 Pa)로 두면 실제 시험 구간이 plot 한구석에
-        몰려 점들이 어떻게 늘어서는지 눈으로 읽을 수 없다.
-        50 Pa 기준선은 항상 보이도록 범위에 포함시킨다.
+        축 범위는 이제 데이터에 따라 움직이지 않는다 (x=0~100 Pa 고정,
+        y=팬 개수로만 정해진 고정 범위). 측정 중 축이 흔들리면 점이 어디로
+        가는지 눈으로 못 읽어서다. 기준선은 고정 범위 전체를 세로로 긋는다.
         """
-        xs = [self.PRESSURE_REF]
-        ys = []
-        for points in self.accumulated.values():
-            for pressure, flow, sigma in points:
-                # 변동폭 가로선의 양 끝까지 축 안에 들어와야 잘리지 않는다
-                xs.extend((pressure - sigma, pressure + sigma))
-                ys.append(flow)
-
-        if not ys:
-            # 측정점이 아직 없다 — 기준선(50 Pa) 하나로 범위를 잡으면 x축이
-            # ±0.6 Pa 로 붕괴해 십자 포인터가 50 근처에 클램프돼 버린다.
-            # 씨앗 범위(시험 압력 구간)를 유지하고 기준선·십자만 갱신한다.
-            self.x_lo, self.x_hi = self.PRESSURE_MIN, self.PRESSURE_MAX
-            self.axis_x.setRange(self.x_lo, self.x_hi)
-            self.axis_y.setRange(self.flow_min, self.flow_max)
-            self.ref_line.replace([QPointF(self.PRESSURE_REF, self.flow_min),
-                                   QPointF(self.PRESSURE_REF, self.flow_max)])
-            self._redraw_crosshair()
-            return
-
-        self.x_lo, self.x_hi, x_ticks = padded_range(min(xs), max(xs),
-                                                      min_span=5.0)
-        self.axis_x.setRange(self.x_lo, self.x_hi)
-        self.axis_x.setTickCount(x_ticks)
-        if ys:
-            self.flow_min, self.flow_max, y_ticks = padded_range(
-                min(ys), max(ys), min_span=100.0)
-            self.axis_y.setRange(self.flow_min, self.flow_max)
-            self.axis_y.setTickCount(y_ticks)
-
-        # 기준선·십자 포인터는 축 범위를 따라 길이가 달라진다
         self.ref_line.replace([QPointF(self.PRESSURE_REF, self.flow_min),
                                QPointF(self.PRESSURE_REF, self.flow_max)])
         self._redraw_crosshair()

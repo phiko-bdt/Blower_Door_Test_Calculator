@@ -345,17 +345,28 @@ def main():
 
         install_mocks()  # 스모크용 빠른 설정으로 되돌린다
 
-        # ── 4. 빈 측정 차트의 축 (씨앗 범위 유지) ────────────────
-        print("4. 차트 경계 조건")
+        # ── 4. 측정 차트의 고정 축 ──────────────────────────────
+        # 축은 데이터에 따라 움직이지 않는다: x 는 늘 0~100 Pa, y 는 팬
+        # 개수로만 정해진다. 측정 중 축이 흔들리면 점이 어디로 가는지 눈으로
+        # 못 읽어서다 (예전엔 점이 들어올 때마다 padded_range 로 다시 잡았다).
+        print("4. 차트 고정 축")
         from bdt.pages import LiveMeasurementChart
         LiveMeasurementChart.reset()
         pg = LiveMeasurementChart("측정", num_fans=1)
-        span = pg.axis_x.max() - pg.axis_x.min()
-        check("점 0개 x축 = 씨앗 범위", span >= 50,
+        check("x축 0~100 Pa 고정",
+              pg.axis_x.min() == 0 and pg.axis_x.max() == 100,
               f"{pg.axis_x.min():.0f}~{pg.axis_x.max():.0f} Pa")
+        y_before = (pg.axis_y.min(), pg.axis_y.max())
         pg.add_point(1300, 45, 0.9, "depressurization")
-        check("점 1개 후 데이터 맞춤 전환",
-              pg.axis_x.max() - pg.axis_x.min() < span)
+        check("점을 찍어도 축은 고정",
+              pg.axis_x.min() == 0 and pg.axis_x.max() == 100
+              and (pg.axis_y.min(), pg.axis_y.max()) == y_before)
+        # y 범위는 팬 개수에 비례한다 (2팬 = 1팬의 2배)
+        pg2 = LiveMeasurementChart("측정", num_fans=2)
+        check("y축 팬 개수 비례",
+              pg2.axis_y.max() == pg.axis_y.max() * 2
+              and pg2.axis_y.min() == pg.axis_y.min() * 2,
+              f"1팬 {pg.axis_y.max():.0f} · 2팬 {pg2.axis_y.max():.0f}")
 
         # ── 4-2. 페이지가 화면(800)보다 높으면 전체화면이 안 된다 ──
         # (사고: 조건 입력 페이지의 최소 높이 793 + 헤더 77 = 870 > 800 이라
