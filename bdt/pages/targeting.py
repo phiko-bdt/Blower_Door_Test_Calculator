@@ -339,22 +339,18 @@ class TargetingPage(QWidget):
         marker.setVisible(True)
 
     def _redraw_hold(self, x_hi=None):
-        """유지 구간 색칠을 현재 상태에 맞춰 다시 그린다."""
-        if self._hold_kind is None or self._hold_start_x is None:
+        """유지 경과 색칠을 다시 그린다 — 수렴(목표 ±허용오차 안)일 때만.
+
+        팬 한계 유지(목표 밖)에는 채워지는 띠를 그리지 않는다. 목표에 닿지도
+        못한 자리에 '유지 중' 띠가 생기면 목표 범위 안에 든 것처럼 오해를
+        준다. 실패 유지 상태는 타일(⚠ 팬 한계 유지)과 팬 한계 도달선이 알린다.
+        """
+        if self._hold_kind != "converge" or self._hold_start_x is None:
             self._span(self._hold_hi, self._hold_lo, 0.0, 0.0, 0.0, 0.0)
             return
         x1 = self._next_x if x_hi is None else min(self._next_x, x_hi)
-        if self._hold_kind == "converge":
-            y_hi = self.target + self.tolerance
-            y_lo = self.target - self.tolerance
-        else:
-            # 실패 유지 — 팬 한계에서 도달한 압력 주변을 칠한다. 목표 띠를
-            # 칠하면 닿지도 못한 범위를 유지 중이라고 오해시킨다. 기준 압력은
-            # 유지 시작 때 고정한 _limit_level 을 쓴다 (매 읽음의 최신값을 쓰면
-            # 띠가 값을 따라 위아래로 흔들린다).
-            level = self._limit_level if self._limit_level is not None else (
-                self._samples[-1].y() if self._samples else self.target)
-            y_hi, y_lo = level + self.tolerance * 0.35, level - self.tolerance * 0.35
+        y_hi = self.target + self.tolerance
+        y_lo = self.target - self.tolerance
         self._span(self._hold_hi, self._hold_lo,
                    float(self._hold_start_x), float(x1), y_hi, y_lo)
 
@@ -396,10 +392,10 @@ class TargetingPage(QWidget):
             self._hold_kind = kind
             self._hold_start_x = max(0, self._next_x - 1)
             if kind == "fail":
-                # 실패 유지가 시작될 때 도달 압력을 '한 번' 고정한다. 매 읽음마다
-                # 갱신하면 팬 한계선과 유지 색칠 띠가 값을 따라 위아래로 흔들려,
-                # 채워지는 유지 바가 위아래로 움직이는 것처럼 보였다. 팬은 이미
-                # 한계에 붙어 압력이 거의 변하지 않으므로 시작값으로 고정한다.
+                # 실패 유지가 시작될 때 도달 압력을 '한 번' 고정한다 — 팬 한계
+                # 도달선이 매 읽음의 최신값을 따라 위아래로 흔들리지 않게. 팬은
+                # 이미 한계에 붙어 압력이 거의 변하지 않으므로 시작값으로 둔다.
+                # (목표 밖 유지 색칠 띠는 아예 그리지 않는다 — _redraw_hold 참고)
                 self._limit_level = self._samples[-1].y() if self._samples else self.target
                 self._redraw_limit(self.axis_x.min(), self.axis_x.max())
             else:

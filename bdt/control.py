@@ -10,9 +10,9 @@ from simple_pid import PID
 
 from bdt import hardware
 
-# 압력 표시·밴드 판정에 쓰는 이동평균 창 크기 (0.1초 간격 → 약 1초 평활).
+# 압력 표시·밴드 판정에 쓰는 이동평균 창 크기 (0.1초 간격 → 약 2초 평활).
 # TargetingPage 도 이 값을 참조해 화면과 판정이 같은 창을 쓰게 한다.
-SMOOTH_WINDOW = 10
+SMOOTH_WINDOW = 20
 
 
 def duty_transformation(input_value, min_value, max_value):
@@ -147,10 +147,10 @@ def get_duty(target, delay, average_time, control_limit, duty_min=0, duty_max=10
         # 압력이 자리 잡길 기다리는 동안(delay) 짧은 주기로 읽는다.
         #
         # **이 값들로 유지 시간을 센다.** 예전엔 delay 가 끝난 뒤 스냅샷 하나로만
-        # 판정해서, 5초 사이 압력이 밴드를 들락거려도 카운트가 그대로 쌓였다.
-        # 루프 한 바퀴가 5.5초쯤이라 "10초 유지"가 사실은 스냅샷 두 개였다 —
-        # 그 사이 무슨 일이 있었는지는 아무도 안 봤다. 판정 기준(밴드)은 화면에
-        # 그리는 것과 같은 pressure_threshold 다.
+        # 판정해서, delay 사이 압력이 밴드를 들락거려도 카운트가 그대로 쌓였다.
+        # 루프 한 바퀴가 delay(3초)+average_time(0.5초)라 "10초 유지"가 사실은
+        # 스냅샷 몇 개였다 — 그 사이 무슨 일이 있었는지는 아무도 안 봤다. 판정
+        # 기준(밴드)은 화면에 그리는 것과 같은 pressure_threshold 다.
         deadline = time.time() + delay
         last_tick = time.time()
         while time.time() < deadline:

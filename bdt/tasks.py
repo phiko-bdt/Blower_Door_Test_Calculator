@@ -375,7 +375,7 @@ class BackgroundTask(QThread):
         # 목표 압력에 해당하는 PWM duty 값 추출
         (duty, success, pressure, saturated) = control.get_duty(
             target=target,
-            delay=5,
+            delay=3,
             average_time=0.5,
             control_limit=10,
             duty_min=min_duty,
