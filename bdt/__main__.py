@@ -12,6 +12,7 @@ import traceback
 
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QFont, QFontDatabase
+from PyQt6.QtCore import QTimer
 
 from bdt import hardware
 from bdt import paths
@@ -100,11 +101,25 @@ def main():
     # BDT_WINDOWED=1 이면 창 모드로 뜬다. 원격에서 화면을 확인할 때 전체화면은
     # 다른 창을 전부 가려 작업이 어렵다.
     window = MainWindow()
-    window.resize(WIN_W, WIN_H)
     if os.environ.get("BDT_WINDOWED") == "1":
+        window.resize(WIN_W, WIN_H)
         window.show()
     else:
+        # 전체화면으로 곧바로 연다.
+        #
+        # resize() 를 먼저 부르지 않는다 — 부르면 창이 1180×720 창모드(labwc 가
+        # 붙이는 제목표시줄 포함)로 잠깐 떴다가 전체화면으로 튄다. 바탕화면
+        # 아이콘으로 실행할 때 "창이 작게 떴다 커지는" 그 전환이 보였다.
+        # showFullScreen 만 부르면 처음부터 전체화면 상태로 매핑된다.
         window.showFullScreen()
+        # 부팅 자동실행에서는 labwc 가 완전히 준비되기 전에 앱이 떠, 첫
+        # 전체화면 요청이 씹혀 창 모드로 남는 일이 있다. 뜬 뒤 몇 번 더 확인해
+        # 전체화면이 아니면 다시 건다 (이미 전체화면이면 아무 것도 안 한다).
+        def _ensure_fullscreen():
+            if not window.isFullScreen():
+                window.showFullScreen()
+        for _delay_ms in (300, 1000, 2500):
+            QTimer.singleShot(_delay_ms, _ensure_fullscreen)
 
     # 시작 시 팬 정지에 실패했다면 시험 전에 반드시 알린다
     if fan_stop_failed:

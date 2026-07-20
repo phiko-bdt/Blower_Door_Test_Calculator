@@ -8,6 +8,16 @@
 창 데코레이션이 없으므로 종료는 헤더 오른쪽 '종료' 버튼이 유일한 수단이다.
 원격에서 볼 때는 `BDT_WINDOWED=1 python3 -m bdt` 로 창 모드.
 
+**전체화면은 앱이 `showFullScreen()` 으로 건다** (`bdt/__main__.py`). resize 를
+먼저 부르지 않는다 — 부르면 창이 1180×720 창모드(제목표시줄 포함)로 잠깐 떴다가
+전체화면으로 튀어, 바탕화면 아이콘 실행 때 크기가 변하는 게 보였다. 부팅
+자동실행에서 labwc 준비 전에 앱이 뜨면 첫 요청이 씹히므로 뜬 뒤 몇 번 더
+`isFullScreen()` 을 확인해 재적용한다. WM 쪽은 `~/.config/labwc/rc.xml` 의
+windowRule(`serverDecoration="no"` `skipTaskbar="yes"`, 저장소 사본
+`labwc-rc.xml`)이 제목표시줄·작업표시줄만 없앤다. **rc.xml 에서 전체화면 토글을
+걸지 말 것** — 앱의 showFullScreen 과 서로 토글해 오히려 창 모드가 된다
+(전체화면=앱, 데코레이션 제거=WM 으로 역할 분리).
+
 **크래시 자동 재시작**: autostart 가 앱을 `while` 루프로 감싼다. GUI(Wayland)
 앱이라 일반 systemd 서비스로는 못 올려(디스플레이 없음) 이 세션 안에서
 재시작한다. 판정은 종료 코드 — 정상 종료(종료 버튼·중복 실행)는 `exit 0` 이라

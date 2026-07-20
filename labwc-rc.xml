@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!--
+  labwc 설정 — ~/.config/labwc/rc.xml 로 복사한다 (저장소의 이 사본이 원본).
+  변경 후 재부팅하거나 labwc 에 SIGHUP 을 보내면 적용된다: killall -HUP labwc
+
+  1) touch: 터치 입력을 HDMI-A-1 출력에 매핑한다. deviceName 은 이 납품
+     단말의 터치패널(ILITEK) 고유값이라, 패널을 바꾸면 libinput list-devices
+     로 새 이름을 확인해 고쳐야 한다.
+
+  2) windowRule: 기밀성능 시험 앱 창을 전체화면 키오스크로 쓴다. 전체화면은
+     앱이 직접 건다(bdt/__main__.py 의 showFullScreen). 여기서는 데코레이션
+     (제목표시줄)과 작업표시줄 항목만 없앤다 — 앱이 부팅 타이밍 때문에 잠깐
+     창 모드로 떠도 제목표시줄이 번쩍이지 않게. 전체화면 토글(ToggleFullscreen)
+     은 여기서 걸지 않는다 — 앱의 showFullScreen 과 서로 토글해 오히려 창
+     모드로 뒤집힌다. 전체화면은 앱, 데코레이션 제거는 WM 으로 역할을 나눈다.
+-->
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <touch deviceName="ILITEK ILITEK-TP" mapToOutput="HDMI-A-1" mouseEmulation="yes"/>
+  <windowRules>
+    <windowRule title="기밀성능 시험" serverDecoration="no" skipTaskbar="yes"/>
+  </windowRules>
+</openbox_config>
