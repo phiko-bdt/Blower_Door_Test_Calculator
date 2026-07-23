@@ -520,13 +520,6 @@ def build():
         ("나눔고딕(NanumGothic)", "SIL Open Font License 1.1"),
         ("poppler(poppler-utils)", "GPL v2"),
     ], header=["구성요소", "라이선스"], key_w=60))
-    A(Spacer(1, 10))
-    A(Table([[""]], colWidths=[170 * mm],
-            style=[("LINEABOVE", (0, 0), (-1, -1), 0.5, LINE)]))
-    A(Spacer(1, 4))
-    A(P("본 기기는 KS L ISO 9972를 준용합니다(빠른 현장 측정을 위해 일부 항목은 "
-        "표준 관행을 단순화). 성적서의 수치·용어는 표준 용어를 따릅니다. 설정·"
-        "환경에 따라 화면 문구가 조금 다를 수 있습니다.", "small"))
     return E
 
 
