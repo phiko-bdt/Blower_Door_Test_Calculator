@@ -17,12 +17,15 @@ from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
     BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer, Table,
-    TableStyle, KeepTogether, PageBreak,
+    TableStyle, KeepTogether, PageBreak, Image as RLImage,
 )
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+SCREENS = os.path.join(HERE, "screens")
 OUT = os.path.join(HERE, "manual.pdf")
 FONT_DIR = "/usr/share/fonts/truetype/nanum"
 
@@ -51,27 +54,27 @@ KEY_BG = colors.HexColor("#f8fafc")
 
 # ── 문단 스타일 ──────────────────────────────────────────────
 def _st(name, **kw):
-    base = dict(fontName="Nanum", fontSize=10.5, leading=16, textColor=INK,
+    base = dict(fontName="Nanum", fontSize=10.5, leading=18, textColor=INK,
                 alignment=TA_LEFT)
     base.update(kw)
     return ParagraphStyle(name, **base)
 
 S = {
-    "h1": _st("h1", fontName="Nanum-B", fontSize=23, leading=27,
+    "h1": _st("h1", fontName="Nanum-B", fontSize=23, leading=28,
               textColor=ACCENT_DK, spaceAfter=3),
-    "lead": _st("lead", fontSize=11, leading=16, textColor=SUB),
-    "small": _st("small", fontSize=8.5, leading=12.5, textColor=MUTED),
-    "h2": _st("h2", fontName="Nanum-B", fontSize=15, leading=19,
-              textColor=ACCENT, spaceBefore=14, spaceAfter=6),
+    "lead": _st("lead", fontSize=11, leading=17, textColor=SUB),
+    "small": _st("small", fontSize=8.5, leading=13.5, textColor=MUTED),
+    "h2": _st("h2", fontName="Nanum-B", fontSize=15, leading=20,
+              textColor=ACCENT, spaceBefore=20, spaceAfter=9),
     "h3": _st("h3", fontName="Nanum-B", fontSize=12, leading=16,
-              textColor=INK, spaceBefore=10, spaceAfter=3),
-    "body": _st("body", spaceAfter=3),
-    "li": _st("li", leftIndent=14, bulletIndent=2, spaceAfter=2),
-    "cell": _st("cell", fontSize=9.5, leading=13.5),
-    "cellk": _st("cellk", fontName="Nanum-B", fontSize=9.5, leading=13.5),
-    "cellh": _st("cellh", fontName="Nanum-B", fontSize=9.5, leading=13.5,
+              textColor=INK, spaceBefore=14, spaceAfter=6),
+    "body": _st("body", spaceAfter=7),
+    "li": _st("li", leftIndent=14, bulletIndent=2, spaceAfter=5, leading=17),
+    "cell": _st("cell", fontSize=9.5, leading=14.5),
+    "cellk": _st("cellk", fontName="Nanum-B", fontSize=9.5, leading=14.5),
+    "cellh": _st("cellh", fontName="Nanum-B", fontSize=9.5, leading=14.5,
                  textColor=ACCENT_DK),
-    "box": _st("box", fontSize=9.8, leading=15),
+    "box": _st("box", fontSize=9.8, leading=16),
 }
 
 
@@ -96,6 +99,9 @@ def callout(kind, html):
         ("TOPPADDING", (0, 0), (-1, -1), 7),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
     ]))
+    # 앞뒤 여백 — 콜아웃끼리·본문과 붙지 않게.
+    t.spaceBefore = 7
+    t.spaceAfter = 7
     return t
 
 
@@ -152,6 +158,35 @@ WTAG = "#b45309"
 NTAG = "#1f5fa8"
 
 
+def screenshot(fname, caption, width_mm=155, root=False):
+    """실제 앱 화면 캡처를 테두리·캡션과 함께 넣는다.
+
+    반환은 플로어블 리스트(EXT 로 붙인다). 파일이 없으면 조용히 건너뛴다
+    (capture_screens.py 를 안 돌렸을 때도 build 는 되게).
+    """
+    path = os.path.join(ROOT if root else SCREENS, fname)
+    if not os.path.exists(path):
+        return [P(f'<font color="#8a94a0">[화면: {caption} — 캡처 파일 없음]'
+                  f'</font>', "small")]
+    iw, ih = ImageReader(path).getSize()
+    w = width_mm * mm
+    h = w * ih / iw
+    img = RLImage(path, width=w, height=h)
+    box = Table([[img]], colWidths=[w])
+    box.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.6, LINE),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    box.hAlign = "CENTER"
+    cap = P(f'<font color="#5b6672">▲ {caption}</font>', "small")
+    cap.alignment = 1  # center
+    grp = KeepTogether([box, Spacer(1, 3), cap])
+    return [Spacer(1, 5), grp, Spacer(1, 8)]
+
+
 # ── 본문 구성 ────────────────────────────────────────────────
 def build():
     E = []  # 플로어블 목록
@@ -197,9 +232,9 @@ def build():
         f'상태입니다. 시험 전에는 팬이 돌지 않는 상태(정지)여야 합니다. '
         f'{b("아래 순서 경고를 반드시 지키세요.")}',
         f'{b("압력센서 호스")}: 실내·실외 측정 튜브(청)를 연결합니다. '
-        f'차압센서는 +·− {b("양방향 측정")}이 가능하므로 반대로 연결해도 측정은 '
-        f'됩니다(부호만 반대로 읽힘). 다만 {b("가압·감압 시험 시 팬 방향")}에 '
-        f'주의하세요.',
+        f'차압센서는 정압·부압(+/-) {b("양방향 측정")}이 가능하므로 반대로 '
+        f'연결해도 측정은 됩니다(부호만 반대로 읽힘). 다만 '
+        f'{b("가압·감압 시험 시 팬 방향")}에 주의하세요.',
         f'{b("건물 상태")}: 창문·문을 규정대로 닫고 시험 조건을 맞춥니다.',
     ]))
     A(callout("danger",
@@ -234,6 +269,8 @@ def build():
     A(P(f'첫 화면({b("조건 입력")})에서 시험 정보를 넣습니다. 입력칸을 누르면 '
         f'화면 키보드가 뜹니다(숫자 칸은 숫자 키패드, 글자 칸은 한글/영문 '
         f'키보드).'))
+    EXT(screenshot("input.png", "조건 입력 화면 — 오른쪽 위에 이전 보고서·설정·"
+                   "저장하고 시작 버튼"))
     A(P("꼭 입력해야 하는 항목 (＊ 표시)", "h3"))
     A(info_table([
         ("실내 체적 (㎥)", "측정 대상 공간의 부피. 누기량 환산의 기준이라 반드시 "
@@ -241,7 +278,8 @@ def build():
         ("팬 수량 (팬 1 / 팬 2)", f'사용하는 팬을 {b("체크")}합니다. 체크한 개수가 '
          f'곧 팬 수입니다. {b("최소 하나는 반드시")} 골라야 합니다. 팬을 1개만 '
          f'쓰면(1개 체크), {b("사용하지 않는 팬은 팬 커버로 막습니다")} — 막지 '
-         f'않으면 그 구멍으로 공기가 새어 측정이 틀어집니다.'),
+         f'않으면 팬 사이로 차압에 따라 기류가 발생해 측정값에 오류가 '
+         f'발생합니다.'),
         ("수행할 시험", f'{DEP} 시험 / {PRE} 시험 중 하나 이상 체크. 둘 다 체크하면 '
          f'감압→가압 순서로 이어서 수행합니다.'),
     ]))
@@ -252,7 +290,8 @@ def build():
         "시공자 · 연면적(㎡) · 구조"))
     A(callout("note",
       f'{tag("헤더 버튼", NTAG)} &nbsp; 화면 오른쪽 위에 세 버튼이 있습니다 — '
-      f'{btn("이전 보고서")}(지난 성적서를 폰으로 받기), {btn("설정")}(측정 '
+      f'{btn("이전 보고서")}(지난 성적서를 스마트폰으로 다운로드), '
+      f'{btn("설정")}(측정 '
       f'기준값 편집), {btn("저장하고 시작")}(입력을 저장하고 다음 단계로).'))
     A(callout("danger",
       f'{tag("예외", DTAG)} &nbsp; 필수 항목을 빠뜨리고 {btn("저장하고 시작")}을 '
@@ -263,6 +302,8 @@ def build():
     A(P("3. 준비 — 영기류(기류 0) 확인", "h2"))
     A(P(f'{btn("저장하고 시작")}을 누르면 시험 종류별로 {b("준비")} 화면이 '
         f'뜹니다. 팬이 정지한 상태에서 실시간 압력을 보여줍니다.'))
+    EXT(screenshot("prepare.png", "준비 화면 — 팬 정지 상태의 실시간 압력과 "
+                   "측정 시작 버튼"))
     EXT([Paragraph(t, S["li"], bulletText=f"{i}.") for i, t in enumerate([
         f'압력이 {b("0에 가깝게")} 안정됐는지 봅니다. 이때 값이 곧 자연 '
         f'압력차(영기류)입니다.',
@@ -278,6 +319,8 @@ def build():
     A(P(f'{btn("측정 시작")}을 누르면 {b("목표 압력 조절")} 화면으로 넘어갑니다. '
         f'앱이 팬 세기를 자동으로 조절해 {b("목표 압력(기본 70 Pa)")}을 '
         f'맞춥니다.'))
+    EXT(screenshot("targeting.png", "목표 압력 조절 화면 — 팬 세기를 자동으로 "
+                   "조절하며 실시간 압력 표시"))
     EXT(bullets([
         '상단에 진행 안내가, 가운데에 실시간 압력이 표시됩니다.',
         f'압력이 목표 근처(허용 오차 안, 기본 ±10%)에서 '
@@ -302,6 +345,8 @@ def build():
     A(P(f'조절이 끝나면 {b("측정")} 화면에서 시작 압력부터 낮은 압력까지 여러 '
         f'지점(기본 10점)을 자동으로 측정합니다. 각 지점에서 압력이 안정될 때까지 '
         f'기다렸다가 평균을 기록합니다.'))
+    EXT(screenshot("measure.png", "측정 화면 — 압력차별 측정점이 그래프에 하나씩 "
+                   "찍힘"))
     EXT(bullets([
         '진행은 자동입니다. 화면의 그래프에 측정점이 하나씩 찍힙니다.',
         f'{DEP}과 {PRE}을 모두 선택했다면, 감압 측정이 끝난 뒤 가압 준비 화면으로 '
@@ -325,6 +370,8 @@ def build():
     A(P("7. 성적서 — 확인과 공유", "h2"))
     A(P(f'마지막 {b("성적서")} 화면에서 발행된 성적서를 앱 안에서 바로 봅니다'
         f'(외부 프로그램을 쓰지 않습니다).'))
+    EXT(screenshot("report_page.png", "성적서 화면 — 왼쪽 성적서, 오른쪽 폰 공유 "
+                   "QR, 아래 저장 위치·버튼", width_mm=150))
     A(info_table([
         (f'{btn("100% 로 보기")}', "성적서를 원래 크기로 확대해 표의 작은 글씨까지 "
          "확인. 손가락으로 끌어 이동합니다. 다시 누르면 화면 맞춤."),
@@ -336,7 +383,7 @@ def build():
     A(P(f'성적서는 시험할 때마다 단말 바탕화면의 {b("「결과보고서」 폴더")}에 '
         f'{b("날짜·시험종류·체적")}이 담긴 이름으로 자동 보관됩니다(예: '
         f'202607171943_감압+가압_500㎥.pdf). 화면 하단에 저장 위치가 표시됩니다.'))
-    A(P("폰으로 받기 — 2단계 QR", "h3"))
+    A(P("스마트폰으로 성적서 다운로드 — 2단계 QR", "h3"))
     A(P("성적서 화면 오른쪽에 QR 두 개가 있습니다. 폰 카메라로 순서대로 찍습니다."))
     EXT([Paragraph(t, S["li"], bulletText=f"{i}.") for i, t in enumerate([
         f'{b("① WiFi 접속 QR")}: 스캔하면 단말이 만드는 WiFi'
@@ -363,12 +410,15 @@ def build():
         f'① WiFi 접속 → ② 목록 열기 순서는 동일합니다. 다 받은 뒤 {btn("닫기")}를 '
         f'누르면 첫 화면으로 돌아갑니다.',
     ]))
+    EXT(screenshot("past_reports.png", "이전 보고서 화면 — 두 QR을 좌우로 크게 "
+                   "배치(겹침 방지)"))
 
     A(P("9. 설정 — 측정 기준값", "h2"))
     A(P(f'첫 화면의 {btn("설정")} 버튼에서 측정 기준값을 바꿀 수 있습니다. '
         f'{b("설정은 시험을 시작하기 전에만")} 바꾸세요(측정 중 기준이 바뀌면 같은 '
         f'시험 안에서 값이 어긋납니다). 바꾼 값은 저장되어 다음 시험부터 '
         f'적용됩니다.'))
+    EXT(screenshot("settings.png", "설정 화면 — 측정 기준값을 항목별로 편집"))
     A(info_table([
         ("목표 압력", "70 Pa", "측정을 시작할 압력차."),
         ("수렴 허용 오차", "10 %", "수렴 판정 폭(목표의 비율). 70 Pa의 10% → ±7 Pa."),
@@ -435,14 +485,13 @@ def build():
     A(P("일반 작업자는 몰라도 됩니다. 설치·점검 담당자를 위한 요약입니다.",
         "small"))
     EXT(bullets([
-        f'{b("공유 WiFi(AP)")}: 단말 내장 WiFi가 {b("BlowerDoor-Test")}(주소 '
-        f'10.42.0.1)를 상시 방송합니다. 폰은 여기에 붙어 성적서를 받습니다. 내장 '
-        f'WiFi는 인터넷용으로 쓰지 않습니다.',
-        f'{b("인터넷(개발용)")}: 필요 시 USB WiFi 동글로 별도 WiFi에 붙여 인터넷을 '
-        f'씁니다. 납품 현장에는 인터넷이 없어도 성적서 공유는 됩니다(단말이 직접 AP).',
-        f'{b("성적서 다운로드 페이지")}: 단말이 웹서버(포트 8080)로 바탕화면 '
-        f'「결과보고서」를 서빙합니다. QR·주소가 이 페이지를 가리킵니다.',
-        f'{b("자동 재시작")}: 앱이 비정상 종료하면 자동으로 다시 켜지고, 그 사이 '
+        f'{b("성적서 공유용 WiFi")}: 단말이 자체 WiFi {b("BlowerDoor-Test")}'
+        f'(주소 10.42.0.1)를 제공합니다. 폰을 이 WiFi 에 연결하면 성적서를 받을 '
+        f'수 있습니다. 이 WiFi 는 인터넷 연결용이 아니라 성적서 공유 전용입니다.',
+        f'{b("성적서 다운로드 페이지")}: 단말이 내부 웹서버(포트 8080)로 바탕화면 '
+        f'「결과보고서」 폴더를 제공합니다. 화면의 QR·주소가 이 페이지를 '
+        f'가리킵니다.',
+        f'{b("자동 재시작")}: 앱이 비정상 종료되면 자동으로 다시 켜지며, 그 사이 '
         f'팬은 꺼집니다. 정상 종료(종료 버튼)는 재시작하지 않습니다.',
     ]))
     A(Spacer(1, 10))
