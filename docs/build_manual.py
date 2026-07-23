@@ -484,7 +484,7 @@ def build():
     A(P("이 장은 유지보수·재설치를 맡는 개발자를 위한 것입니다.", "small"))
     A(P("저장소 · 라이선스", "h3"))
     A(info_table([
-        ("소스 저장소", "github.com/JuhyuckHong/Blower_Door_Test_Calculator"),
+        ("소스 저장소", "github.com/phiko-bdt/Blower_Door_Test_Calculator"),
         ("라이선스", "MIT License (© 2023) — 자유롭게 사용·수정·재배포할 수 "
          "있습니다."),
     ], key_w=34))
