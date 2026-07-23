@@ -301,10 +301,6 @@ def build():
       f'{btn("이전 보고서")}(지난 성적서를 스마트폰으로 다운로드), '
       f'{btn("설정")}(측정 '
       f'기준값 편집), {btn("저장하고 시작")}(입력을 저장하고 다음 단계로).'))
-    A(callout("danger",
-      f'{tag("예외", DTAG)} &nbsp; 필수 항목을 빠뜨리고 {btn("저장하고 시작")}을 '
-      f'누르면 알림창이 뜨고 넘어가지 않습니다. 실내 체적·팬 수량·시험 종류를 '
-      f'확인하세요.'))
 
     EXT(ch("3. 준비 — 영기류(기류 0) 확인"))
     A(P(f'{btn("저장하고 시작")}을 누르면 시험 종류별로 {b("준비")} 화면이 '
@@ -364,7 +360,7 @@ def build():
       f'에서 잡힌 점은 신뢰도가 낮아 경고가 표시됩니다. 다만 이런 점도 '
       f'{b("계산에서 제외하지 않고 포함")}합니다(의도된 방침).'))
 
-    EXT(ch("6. 계산 — 결과 요약"))
+    A(P("6. 계산 — 결과 요약", "h2"))
     A(P(f'모든 측정이 끝나면 {b("계산")} 화면이 측정값을 회귀분석해 핵심 결과를 '
         f'먼저 보여줍니다.'))
     EXT(bullets([
@@ -374,10 +370,10 @@ def build():
     ]))
 
     EXT(ch("7. 성적서 — 확인과 공유"))
-    A(P(f'마지막 {b("성적서")} 화면에서 발행된 성적서를 앱 안에서 바로 봅니다'
-        f'(외부 프로그램을 쓰지 않습니다).'))
-    EXT(screenshot("report_screen.png", "성적서 화면 — 왼쪽 성적서, 오른쪽 스마트폰 "
-                   "공유 QR, 아래 저장 위치·버튼", width_mm=150))
+    A(P(f'마지막 {b("성적서")} 화면에서 발행된 성적서를 앱 안에서 바로 '
+        f'봅니다.'))
+    EXT(screenshot("report.png", "성적서 화면 — 왼쪽 성적서, 오른쪽 스마트폰 "
+                   "공유 QR, 아래 저장 위치·버튼"))
     A(info_table([
         (f'{btn("100% 로 보기")}', "성적서를 원래 크기로 확대해 표의 작은 글씨까지 "
          "확인. 손가락으로 끌어 이동합니다. 다시 누르면 화면 맞춤."),
@@ -411,6 +407,8 @@ def build():
     EXT(ch("8. 이전 보고서 받기 — 시험 없이 지난 성적서 스마트폰으로"))
     A(P(f'새 시험을 하지 않고 지난 성적서만 스마트폰으로 넘기려면, 첫 화면 오른쪽 위 '
         f'{btn("이전 보고서")} 버튼을 누릅니다.'))
+    EXT(screenshot("input.png", "첫 화면(조건 입력) 오른쪽 위의 [이전 보고서] "
+                   "버튼 — 여기서 시작합니다"))
     EXT(bullets([
         f'성적서 화면과 같은 {b("2단계 QR")}이 뜨는데, 여기서는 '
         f'{b("화면 양쪽에 크게")} 배치돼 스마트폰으로 찍을 때 두 QR이 겹치지 않습니다.',
@@ -462,7 +460,7 @@ def build():
         ("「준비 안 됨」(QR 자리)", "공유 WiFi(AP)가 아직 안 뜸. 잠시 기다리면 QR이 "
          "나타납니다. 7장 참조."),
     ], header=["화면/알림", "뜻과 대처"], key_w=52))
-    A(P("자주 겪는 상황", "h3"))
+    A(P("참고 사항", "h3"))
     A(info_table([
         ("앱을 종료하고 싶어요", f'화면 오른쪽 위 {btn("종료")} 버튼(한 번 '
          f'되묻습니다). 전체화면이라 이 버튼이 유일한 종료 수단입니다.'),
@@ -487,19 +485,46 @@ def build():
       f'비정상 종료 감시 등). 측정 중에는 팬이 도는 것이 정상입니다.<br/>'
       f'• 팬 전원은 수동 공급이므로, 시험을 마치면 필요 시 팬 전원도 정리하세요.'))
 
-    EXT(ch("11. 관리자 참고 — 네트워크·실행"))
-    A(P("일반 작업자는 몰라도 됩니다. 설치·점검 담당자를 위한 요약입니다.",
+    EXT(ch("11. 개발자 정보 — 저장소·설치·의존성"))
+    A(P("이 장은 유지보수·재설치를 맡는 개발자를 위한 것입니다.", "small"))
+    A(P("저장소 · 라이선스", "h3"))
+    A(info_table([
+        ("소스 저장소", "github.com/JuhyuckHong/Blower_Door_Test_Calculator"),
+        ("라이선스", "MIT License (© 2023) — 자유롭게 사용·수정·재배포할 수 "
+         "있습니다."),
+    ], key_w=34))
+    A(P("실행 환경", "h3"))
+    A(info_table([
+        ("하드웨어", "라즈베리파이 5 + 1280×800 터치스크린. 팬은 커널 "
+         "sysfs PWM(/sys/class/pwm, GPIO13), 압력센서는 Modbus RTU"
+         "(/dev/ttyUSB0)로 제어합니다."),
+        ("OS · 런타임", "Debian 12(bookworm), Python 3.11. GUI 는 PyQt6"
+         "(labwc/Wayland 위 XWayland). 실행 명령: python3 -m bdt."),
+    ], key_w=30))
+    A(P("파이썬 의존성 (requirements.txt)", "h3"))
+    A(P("PyQt6 · PyQt6-Charts(화면·실시간 차트), matplotlib · numpy · "
+        "scipy(성적서 그래프·회귀분석), pyserial · crcmod(압력센서 Modbus·CRC), "
+        "simple-pid(팬 압력 PID 제어), Pillow(이미지), openpyxl(엑셀), "
+        "Flask(성적서 공유 웹서버), segno(QR 생성). "
+        f'{b("설치")}: pip install -r requirements.txt'))
+    A(P("시스템 패키지 · 리소스", "h3"))
+    A(P("poppler-utils(pdftoppm · pdfinfo — 성적서 렌더), NetworkManager · "
+        "dnsmasq · nftables(공유 AP · 캡티브 포털), 나눔고딕 폰트(fonts-nanum), "
+        "커널 pwm-2chan 오버레이(/boot/firmware/config.txt). ※ 이 설명서 PDF "
+        "생성은 reportlab 을 별도로 씁니다(docs/build_manual.py)."))
+    A(P("오픈소스 고지", "h3"))
+    A(P("이 앱은 아래 오픈소스에 기대고 있으며, 각 라이선스를 따릅니다.",
         "small"))
-    EXT(bullets([
-        f'{b("성적서 공유용 WiFi")}: 단말이 자체 WiFi {b("BlowerDoor-Test")}'
-        f'(주소 10.42.0.1)를 제공합니다. 스마트폰을 이 WiFi 에 연결하면 성적서를 받을 '
-        f'수 있습니다. 이 WiFi 는 인터넷 연결용이 아니라 성적서 공유 전용입니다.',
-        f'{b("성적서 다운로드 페이지")}: 단말이 내부 웹서버(포트 8080)로 바탕화면 '
-        f'「결과보고서」 폴더를 제공합니다. 화면의 QR·주소가 이 페이지를 '
-        f'가리킵니다.',
-        f'{b("자동 재시작")}: 앱이 비정상 종료되면 자동으로 다시 켜지며, 그 사이 '
-        f'팬은 꺼집니다. 정상 종료(종료 버튼)는 재시작하지 않습니다.',
-    ]))
+    A(info_table([
+        ("PyQt6 / Qt6", "GPL v3 또는 상용(PyQt6) · LGPL v3(Qt6)"),
+        ("matplotlib", "matplotlib License(PSF · BSD 계열)"),
+        ("NumPy · SciPy · Flask · Pillow · pyserial", "BSD 계열(허용적 "
+         "라이선스)"),
+        ("simple-pid · crcmod", "MIT License"),
+        ("segno", "BSD License"),
+        ("나눔고딕(NanumGothic)", "SIL Open Font License 1.1"),
+        ("poppler(poppler-utils)", "GPL v2"),
+    ], header=["구성요소", "라이선스"], key_w=60))
     A(Spacer(1, 10))
     A(Table([[""]], colWidths=[170 * mm],
             style=[("LINEABOVE", (0, 0), (-1, -1), 0.5, LINE)]))

@@ -34,7 +34,8 @@ web.PORT = 8080
 
 from bdt.theme import APP_STYLE
 from bdt.pages import (InputInitialValues, SettingsPage, PastReportsPage,
-                       LivePressureData, TargetingPage, LiveMeasurementChart)
+                       LivePressureData, TargetingPage, LiveMeasurementChart,
+                       ReportPage)
 
 W, H = 1180, 720
 
@@ -67,14 +68,9 @@ def main():
             "targeting")
     capture(LiveMeasurementChart("측정 중…", num_fans=1), "measure")
     capture(PastReportsPage(), "past_reports", wait=500)
-
-    # 성적서 화면은 reporting 이 이미 렌더해 둔 루트 report_page.png 를 그대로
-    # 쓴다(별도 캡처 안 함). 무시 패턴을 피해 이름을 바꿔 docs/screens 에 둔다.
-    import shutil
-    src = os.path.join(ROOT, "report_page.png")
-    if os.path.exists(src):
-        shutil.copyfile(src, os.path.join(OUTDIR, "report_screen.png"))
-        print("복사: report_screen.png")
+    # 성적서 '앱 화면'(왼쪽 성적서 + 오른쪽 공유 QR + 하단 버튼). A4 성적서
+    # 문서 통짜가 아니라 ReportPage 위젯을 그대로 캡처한다.
+    capture(ReportPage(), "report", wait=500)
 
     # 오프스크린 센서 폴러 스레드가 남아 종료가 늦을 수 있어 즉시 끝낸다.
     os._exit(0)
