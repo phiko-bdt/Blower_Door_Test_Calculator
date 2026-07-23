@@ -68,6 +68,14 @@ def main():
     capture(LiveMeasurementChart("측정 중…", num_fans=1), "measure")
     capture(PastReportsPage(), "past_reports", wait=500)
 
+    # 성적서 화면은 reporting 이 이미 렌더해 둔 루트 report_page.png 를 그대로
+    # 쓴다(별도 캡처 안 함). 무시 패턴을 피해 이름을 바꿔 docs/screens 에 둔다.
+    import shutil
+    src = os.path.join(ROOT, "report_page.png")
+    if os.path.exists(src):
+        shutil.copyfile(src, os.path.join(OUTDIR, "report_screen.png"))
+        print("복사: report_screen.png")
+
     # 오프스크린 센서 폴러 스레드가 남아 종료가 늦을 수 있어 즉시 끝낸다.
     os._exit(0)
 
