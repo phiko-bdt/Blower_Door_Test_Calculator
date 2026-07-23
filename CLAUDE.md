@@ -263,10 +263,12 @@ windowRule(`serverDecoration="no"` `skipTaskbar="yes"`, 저장소 사본
 
 ## git
 
-- 커밋 작성자: `J Hong <128202933+JuhyuckHong@users.noreply.github.com>` (repo-local).
+- 커밋 작성자: `BDT Bot <bdt@users.noreply.github.com>` (repo-local, 익명).
 - 복귀 지점: 태그 `납품용-안전-마진`. 단일 브랜치 `main` 에서 작업한다
   (예전 rpi5·codex/* 작업 브랜치는 main 으로 통합·정리됨).
-- 원격은 둘: `origin` = 조직 `github.com/phiko-bdt/...`(기본), `personal` =
-  `github.com/JuhyuckHong/...`(private 사본). 둘은 리다이렉트·포크로 연결돼
-  있지 않은 독립 저장소라, 같은 상태로 두려면 양쪽에 모두 push 한다.
+- 원격은 `origin` 하나 = 조직 `github.com/phiko-bdt/...`. **인증은 개인 gh
+  로그인이 아니라 SSH deploy key**(`~/.ssh/bdt_org_deploy`, 이 레포 전용
+  write 키)로 한다 — `core.sshCommand` 가 이 키를 지정하고 remote 는 SSH
+  주소다. 개인 사본 `github.com/JuhyuckHong/...`(private, 독립 저장소)는 이
+  머신과 연결을 끊었으니 여기서 push 하지 않는다.
 - 성적서 출력을 바꾸는 변경은 커밋 메시지에 명시할 것 (픽셀 불변이 기본 기대).
