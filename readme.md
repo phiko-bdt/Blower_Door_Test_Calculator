@@ -37,11 +37,15 @@ python3 -m bdt
 ```
 `python3 -m bdt` must be run from the repository root (or with the working directory / `PYTHONPATH` pointing at it) so that Python can import the `bdt` package.
 
-The program proceeds in the following order:
-1. **Measurement** – collect pressure data
-2. **Calculation** – compute flow rates and ACH
-3. **Graph** – plot the pressure–flow relationship
-4. **Report** – generate an HTML/PDF report
+The program walks through the full field workflow:
+1. **Condition input** – interior volume, fan count, and depressurisation / pressurisation selection
+2. **Preparation** – confirm the zero-flow (baseline) pressure with the fan stopped
+3. **Target adjustment** – auto-drive the fan (PID) to the target pressure (default 70 Pa)
+4. **Measurement** – sweep several pressure points and record the arithmetic mean at each
+5. **Calculation** – power-law regression → Q50 / ACH50 / leakage area
+6. **Report** – an A4 PDF shown in-app, archived to the desktop `결과보고서` folder, and shareable by USB copy or phone QR
+
+Depressurisation and pressurisation, when both are selected, run back to back (steps 2–4 repeat per direction). If the fan cannot reach a usable pressure (too airtight/draughty, or the space is too large, or the sensor is mis-wired) the app shows a dedicated *test-impossible* screen instead of measuring.
 
 For headless environments or additional options refer to the source code under `bdt/`.
 
@@ -127,7 +131,7 @@ The program is organized as the `bdt` Python package, run as `python3 -m bdt`:
 
 - `bdt/__main__.py` – entry point; sets up the Qt application, loads the font/theme, and starts the test flow.
 - `bdt/flow.py` – the single `MainWindow` and `TestFlow`, which walks through the pages of the test in order.
-- `bdt/pages/` – the individual screens: `input_initial_values.py` (test condition input), `settings_page.py` (measurement criteria + fan calibration editor), `live_pressure.py` (pre-test live pressure view), `targeting.py` (target pressure adjustment), `live_chart.py` (live measurement progress + pressure–flow scatter chart), `summary.py` (calculation briefing), `report_view.py` (in-app report viewer with USB copy and phone-share QR), `progress.py`/`error.py` (progress and error displays).
+- `bdt/pages/` – the individual screens: `input_initial_values.py` (test condition input), `settings_page.py` (measurement criteria + fan calibration editor), `live_pressure.py` (pre-test live pressure view), `targeting.py` (target pressure adjustment), `live_chart.py` (live measurement progress + pressure–flow scatter chart), `summary.py` (calculation briefing), `report_view.py` (in-app report viewer with USB copy and phone-share QR), `past_reports.py` (share past reports from the start screen without a new test), `share_panel.py` (shared 2-stage phone-share QR widget used by both the report and past-reports screens), `progress.py` (progress display and the error / test-impossible screens).
 - `bdt/hardware.py` – sensor input and fan PWM output hardware control.
 - `bdt/control.py` – PWM–pressure PID control.
 - `bdt/tasks.py` – background worker threads that run the measurement.
@@ -141,7 +145,9 @@ The program is organized as the `bdt` Python package, run as `python3 -m bdt`:
 - `bdt/config.py`, `bdt/theme.py`, `bdt/widgets.py`, `bdt/scale.py` – runtime configuration, the shared design theme, common widgets, and axis-scaling helpers.
 
 Korean development notes (architecture decisions, hardware pitfalls, operating
-rules) live in `CLAUDE.md`; the field manual is `MANUAL.md`.
+rules) live in `CLAUDE.md`; the field manual is `MANUAL.md`, and a formatted,
+illustrated PDF manual is generated at `docs/manual.pdf` by
+`docs/build_manual.py` (screenshots via `docs/capture_screens.py`).
 
 Running `python3 -m bdt` executes the full flow: measurement data are stored as JSON, then processed to produce a final HTML/PDF report along with graphs for documentation.
 
@@ -202,11 +208,15 @@ python3 -m bdt
 ```
 `python3 -m bdt`는 `bdt` 패키지를 import 할 수 있도록 반드시 저장소 루트에서(또는 작업 디렉터리·`PYTHONPATH`가 저장소를 가리키게 하여) 실행해야 합니다.
 
-프로그램은 다음 순서로 진행됩니다.
-1. **측정** – 압력 데이터를 수집합니다.
-2. **계산** – 유량과 ACH를 계산합니다.
-3. **그래프** – 압력과 유량 관계를 플로팅합니다.
-4. **보고서** – HTML/PDF 보고서를 생성합니다.
+프로그램은 현장 시험 전 과정을 순서대로 안내합니다.
+1. **조건 입력** – 실내 체적, 팬 수량, 감압/가압 선택
+2. **준비** – 팬 정지 상태에서 영기류(baseline) 압력 확인
+3. **목표 압력 조절** – 팬을 자동(PID) 제어해 목표 압력(기본 70 Pa)에 맞춤
+4. **측정** – 여러 압력점을 순차 측정하고 각 지점의 산술평균을 기록
+5. **계산** – 거듭제곱 법칙 회귀 → Q50 / ACH50 / 누기 면적
+6. **성적서** – 앱 안에서 보는 A4 PDF. 바탕화면 `결과보고서` 폴더에 보관되며 USB 복사·폰 QR 로 공유
+
+감압·가압을 모두 선택하면 방향별로 이어서(2~4단계 반복) 수행합니다. 팬으로 유효한 압력을 만들 수 없으면(과도한 기밀·외풍, 공간 과대, 센서 오배선) 측정 대신 전용 **시험 불가** 화면을 띄웁니다.
 
 GUI 없이 사용하거나 추가 옵션이 필요한 경우 `bdt/` 아래 소스 코드를 참고하세요.
 
@@ -290,7 +300,7 @@ python3 -m bdt
 
 - `bdt/__main__.py` – 진입점. Qt 애플리케이션·폰트·테마를 준비하고 시험 절차를 시작합니다.
 - `bdt/flow.py` – 단일 창(`MainWindow`)과 시험 절차 진행(`TestFlow`). 페이지를 순서대로 전환합니다.
-- `bdt/pages/` – 각 화면 모듈. `input_initial_values.py`(시험 조건 입력), `settings_page.py`(측정 기준값·팬 보정식 편집), `live_pressure.py`(측정 시작 전 실시간 압력 확인), `targeting.py`(목표 압력 조절), `live_chart.py`(측정 진행 상황 + 압력-누기량 산점도), `summary.py`(계산 브리핑), `report_view.py`(앱 내 성적서 화면 — USB 복사·폰 공유 QR), `progress.py`/`error.py`(진행·오류 표시).
+- `bdt/pages/` – 각 화면 모듈. `input_initial_values.py`(시험 조건 입력), `settings_page.py`(측정 기준값·팬 보정식 편집), `live_pressure.py`(측정 시작 전 실시간 압력 확인), `targeting.py`(목표 압력 조절), `live_chart.py`(측정 진행 상황 + 압력-누기량 산점도), `summary.py`(계산 브리핑), `report_view.py`(앱 내 성적서 화면 — USB 복사·폰 공유 QR), `past_reports.py`(시험 없이 시작 화면에서 지난 성적서 공유), `share_panel.py`(성적서·이전 보고서 화면이 공유하는 2단계 폰 공유 QR 위젯), `progress.py`(진행 표시 및 오류·시험 불가 화면).
 - `bdt/hardware.py` – 센서 입력·팬 PWM 출력 하드웨어 제어.
 - `bdt/control.py` – PWM-압력 PID 제어.
 - `bdt/tasks.py` – 측정을 담당하는 백그라운드 작업 스레드.
@@ -303,7 +313,7 @@ python3 -m bdt
 - `bdt/paths.py` – 작업 디렉터리와 무관하게 모든 리소스·산출물의 절대경로를 관리합니다.
 - `bdt/config.py`, `bdt/theme.py`, `bdt/widgets.py`, `bdt/scale.py` – 실행 환경 설정, 공통 디자인 테마, 공용 위젯, 축 눈금 보조.
 
-개발 결정·하드웨어 함정·운용 규칙은 `CLAUDE.md`, 현장 사용 설명서는 `MANUAL.md` 에 있습니다.
+개발 결정·하드웨어 함정·운용 규칙은 `CLAUDE.md`, 현장 사용 설명서는 `MANUAL.md` 에 있으며, 서식이 적용된 그림 포함 PDF 설명서는 `docs/build_manual.py`(스크린샷은 `docs/capture_screens.py`)가 `docs/manual.pdf` 로 생성합니다.
 
 `python3 -m bdt`를 실행하면 이 단계들이 순차적으로 진행되며, 측정된 데이터는 JSON으로 저장되고 최종 HTML/PDF 보고서와 그래프가 생성됩니다.
 
