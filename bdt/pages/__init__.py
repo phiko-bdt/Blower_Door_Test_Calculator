@@ -8,6 +8,7 @@ from bdt.pages.targeting import TargetingPage
 from bdt.pages.summary import CalculationSummary
 from bdt.pages.settings_page import SettingsPage
 from bdt.pages.report_view import ReportPage
+from bdt.pages.past_reports import PastReportsPage
 
 __all__ = [
     "InputInitialValues",
@@ -19,4 +20,5 @@ __all__ = [
     "CalculationSummary",
     "SettingsPage",
     "ReportPage",
+    "PastReportsPage",
 ]

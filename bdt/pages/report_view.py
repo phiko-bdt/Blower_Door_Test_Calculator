@@ -30,27 +30,7 @@ from PyQt6.QtGui import QPixmap
 
 from bdt import paths
 from bdt.widgets import alert, toast
-
-
-def _qr_pixmap(url, size=150):
-    """URL 을 담은 QR 코드 QPixmap. segno 가 없으면 None (주소 텍스트로 대체).
-
-    segno 로 PNG 를 메모리에 그려 QPixmap 으로 읽는다. 외부 파일을 안 만든다.
-    """
-    try:
-        import io
-        import segno
-        from PyQt6.QtGui import QPixmap
-        buf = io.BytesIO()
-        # scale 을 키워 또렷하게 그린 뒤 위젯 크기로 부드럽게 줄인다
-        segno.make(url, error="m").save(buf, kind="png", scale=8, border=2)
-        pm = QPixmap()
-        pm.loadFromData(buf.getvalue(), "PNG")
-        return pm.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio,
-                         Qt.TransformationMode.SmoothTransformation)
-    except Exception:
-        # segno 미설치·인코딩 실패 — QR 없이도 주소 안내는 되게 조용히 넘어간다
-        return None
+from bdt.pages.share_panel import SharePanel
 
 
 class _UsbCopyTask(QThread):
@@ -125,10 +105,12 @@ class ReportPage(QWidget):
         QScroller.grabGesture(self.scroll.viewport(),
                               QScroller.ScrollerGestureType.LeftMouseButtonGesture)
 
+        # 폰 공유 QR 카드 — 스스로 2초마다 AP·네트워크 상태를 갱신한다.
+        self.share = SharePanel(self)
         content = QHBoxLayout()
         content.setSpacing(16)
         content.addWidget(self.scroll, 1)
-        content.addWidget(self._qr_panel())
+        content.addWidget(self.share)
         root.addLayout(content, 1)
 
         # ── 하단 줄 ────────────────────────────────────────────
@@ -177,12 +159,12 @@ class ReportPage(QWidget):
         self._copy_task = None  # 실행 중인 USB 복사 (중복 실행 방지)
         # USB 가 '새로 꽂히는' 순간에만 안내 토스트를 띄우려고 직전 상태를 든다
         self._usb_present = False
-        # USB·네트워크 QR 을 2초마다 갱신 (화면 떠 있는 동안 꽂거나 연결해도
-        # 반영되게). 한 타이머로 둘 다 본다.
+        # USB 유무를 2초마다 확인 (화면 떠 있는 동안 꽂아도 반영되게). 공유 QR
+        # 은 SharePanel 이 자체 타이머로 본다.
         self._poll = QTimer(self)
-        self._poll.timeout.connect(self._refresh_devices)
+        self._poll.timeout.connect(self._refresh_usb)
         self._poll.start(2000)
-        self._refresh_devices()
+        self._refresh_usb()
 
         if self._pixmap.isNull():
             # 렌더가 없거나 깨졌다 — 성적서 PDF 는 만들어졌으므로 시험은
@@ -211,170 +193,7 @@ class ReportPage(QWidget):
         # NanumSquare 에 '›'(U+203A) 글리프가 없어 공백으로 렌더된다 — '/' 사용
         return "  /  ".join(crumbs)
 
-    # ── 폰 공유 QR (① WiFi 연결 → ② 스캔해 받기) ─────────────
-    def _qr_step(self, caption_text):
-        """QR 한 단계 (캡션 + QR 그림 + 아래 설명).
-
-        (블록, 캡션, 이미지, 설명) 반환 — 캡션은 AP 유무에 따라 문구를 바꾼다.
-        """
-        cap = QLabel(caption_text)
-        cap.setObjectName("StatName")
-        cap.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        cap.setWordWrap(True)
-        img = QLabel()
-        img.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        sub = QLabel()
-        sub.setObjectName("Hint")
-        sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        sub.setWordWrap(True)
-        sub.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        block = QWidget()
-        v = QVBoxLayout(block)
-        v.setContentsMargins(0, 0, 0, 0)
-        v.setSpacing(4)
-        v.addWidget(cap)
-        v.addWidget(img)
-        v.addWidget(sub)
-        return block, cap, img, sub
-
-    def _qr_panel(self):
-        """A4 지면 오른쪽 여백의 폰 공유 카드.
-
-        ① 폰을 단말 WiFi 에 연결(WiFi QR) → ② 성적서 다운로드(주소 QR).
-        AP(bdt-share)가 떠 있으면 두 단계, 사무실 WiFi 등에선 ②만 보인다.
-        """
-        # 패널 제목 — 이 영역이 '폰으로 받는 곳'임을 먼저 알린다. 예전엔 곧바로
-        # '① …' 로 시작해 무엇을 하는 자리인지 안 잡혔다.
-        title = QLabel("폰으로 성적서 받기")
-        title.setObjectName("Section")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        rule = QFrame()
-        rule.setObjectName("SectionRule")
-
-        # 캡티브 포털: ① 만 스캔하면 WiFi 연결 후 성적서 목록이 자동으로 뜬다.
-        # ② 는 자동으로 안 뜨는 폰(iOS 캡티브 브라우저 제한 등)을 위한 폴백.
-        self._wifi_block, self.wifi_cap, self.wifi_qr, self.wifi_sub = \
-            self._qr_step("① 폰 카메라로 이 QR 스캔")
-        self._url_block, self.url_cap, self.url_qr, self.url_sub = \
-            self._qr_step("② 1번으로 목록이 안 열릴 때만")
-
-        # 위·아래 사용법 — 각 QR 캡션은 '무엇을 스캔하나'만 말한다. 이 두 줄은
-        # 전체 흐름(폰 카메라로 시작 → 목록에서 받기로 끝)을 감싸 안내한다.
-        top_help = QLabel("폰 카메라 앱을 열어\n아래 QR 을 비추세요")
-        top_help.setObjectName("Hint")
-        top_help.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        top_help.setWordWrap(True)
-        bottom_help = QLabel("성적서 목록에서 '받기' 를\n누르면 폰에 저장됩니다")
-        bottom_help.setObjectName("Hint")
-        bottom_help.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        bottom_help.setWordWrap(True)
-
-        self.qr_panel = QFrame()
-        self.qr_panel.setObjectName("Card")
-        self.qr_panel.setFixedWidth(210)
-        lay = QVBoxLayout(self.qr_panel)
-        lay.setContentsMargins(14, 16, 14, 16)
-        lay.setSpacing(12)
-        lay.addWidget(title)
-        lay.addWidget(rule)
-        lay.addWidget(top_help)
-        lay.addStretch(1)
-        lay.addWidget(self._wifi_block)
-        # 두 QR 사이를 넉넉히 벌린다 — 붙어 있으면 폰으로 찍을 때 옆 QR 이
-        # 같이 잡혀 어느 걸 스캔하는지 헷갈린다.
-        lay.addStretch(1)
-        lay.addWidget(self._url_block)
-        lay.addStretch(1)
-        lay.addWidget(bottom_help)
-        self.qr_panel.setVisible(False)
-        self._wifi_shown = None
-        self._url_shown = None
-        return self.qr_panel
-
-    def _set_qr(self, img_label, sub_label, payload, sub_text, size=120):
-        pixmap = _qr_pixmap(payload, size)
-        if pixmap is None:
-            img_label.setText("(QR 없음)")   # segno 미설치 폴백
-        else:
-            img_label.setPixmap(pixmap)
-        sub_label.setText(sub_text)
-
-    def _refresh_qr(self):
-        """AP·네트워크 상태에 맞춰 공유 QR 을 갱신한다.
-
-        2초마다 GUI 스레드에서 돌므로 nmcli 서브프로세스를 아껴야 한다 —
-        NetworkManager 가 느린 순간엔 호출당 수 초씩 막혀 화면이 버벅인다.
-        정상 상태(변화 없음)에선 AP 유무 확인(ap_ip) 한 번만 부르고,
-        자격증명·SSID 조회는 QR 을 실제로 새로 그릴 때만 한다.
-        """
-        from bdt import web
-        # AP(bdt-share)가 '실제로 떠 있는지'는 IP 유무로 본다. 연결 설정만 있고
-        # 안 떠 있으면 접속 QR 을 보여줘선 안 된다 — 없는 망에 붙으라고
-        # 안내하는 꼴이 된다.
-        ap = web.ap_ip()                    # 폴링당 유일한 상시 nmcli 호출
-        ip = ap or web.lan_ip()             # lan_ip 은 소켓 조회라 싸다
-        if not ip:                          # 네트워크·AP 둘 다 없음
-            self.qr_panel.setVisible(False)
-            self._wifi_shown = self._url_shown = None
-            return
-        ap_up = ap is not None
-        url = f"http://{ip}:{web.PORT}/"
-
-        # ① WiFi 접속 QR — AP 가 실제로 떠 있을 때만. 자격증명(nmcli)은 QR 이
-        # 아직 안 그려졌을 때만 읽는다 (SSID·비번은 세션 중 바뀌지 않는다 —
-        # 바꾸는 경로는 setup-hotspot.sh 뿐이고 그때 AP 가 재시작돼 여기로
-        # 다시 온다).
-        if ap_up:
-            if self._wifi_shown is None:
-                cred = web.ap_credentials()
-                wifi = web.wifi_qr_payload(cred)
-                if wifi and cred:
-                    # 스캔하면 WiFi 자동 연결(비번 QR 에 박힘) → 목록 자동 열림.
-                    # 아래 SSID·비번은 QR 이 안 될 때 손으로 연결하는 예비 정보.
-                    self._set_qr(self.wifi_qr, self.wifi_sub, wifi,
-                                 f"WiFi 연결 후 목록 자동 열림\n"
-                                 f"(수동: {cred[0]} / {cred[1]})")
-                    self._wifi_shown = wifi
-                    # ① 이 이제 막 생겼다 — ② 캡션이 "1번으로…" 를 가리켜도
-                    # 되도록 아래 갱신 블록을 강제로 태운다 (nmcli 추가 호출
-                    # 없음 — ap_up 경로의 캡션은 고정 문구다).
-                    self._url_shown = None
-            self._wifi_block.setVisible(self._wifi_shown is not None)
-        else:
-            self._wifi_block.setVisible(False)
-            self._wifi_shown = None
-
-        # ② 다운로드 주소 QR — 주소가 바뀔 때만(첫 표시·망 전환) 다시 그린다.
-        # 캡션도 이때만 정한다: ap_up 이 바뀌면 IP(10.42.0.1 ↔ LAN)가 바뀌어
-        # 반드시 여기로 들어오므로 폴링마다 SSID(nmcli)를 조회할 필요가 없다.
-        if url != self._url_shown:
-            #   AP 있음: 폰이 AP 에 붙은 뒤 ① 자동 열림이 안 될 때의 폴백.
-            #   AP 없음: 폰이 '이미 같은 WiFi 에 있어야' 열린다 — 그렇지 않으면
-            #            스캔해도 접속이 안 되므로 전제 조건을 분명히 알린다.
-            if ap_up and self._wifi_shown is not None:
-                self.url_cap.setText("② 1번으로 목록이 안 열릴 때만")
-            elif ap_up:
-                # AP 는 떠 있는데 자격증명을 못 읽어 ① QR 이 없다 (드묾) —
-                # 존재하지 않는 1번을 가리키는 캡션은 헷갈린다.
-                self.url_cap.setText("단말 WiFi 에 연결한 폰에서 스캔")
-            else:
-                # 폰이 어느 망에 붙어야 하는지 실제 SSID 로 알린다
-                ssid = web.lan_ssid()
-                if ssid:
-                    self.url_cap.setText(f"'{ssid}' WiFi 의 폰에서만")
-                else:
-                    self.url_cap.setText("같은 WiFi 에 연결된 폰에서만")
-            self._set_qr(self.url_qr, self.url_sub, url,
-                         url.replace("http://", "").rstrip("/"))
-            self._url_shown = url
-        self.qr_panel.setVisible(True)
-
     # ── USB 복사 ──────────────────────────────────────────────
-    def _refresh_devices(self):
-        """USB·네트워크 상태를 확인해 관련 UI 를 켜고 끈다 (2초마다)."""
-        self._refresh_usb()
-        self._refresh_qr()
-
     def _refresh_usb(self):
         """USB 유무를 확인해 복사 버튼을 켜고 끈다. 새로 꽂히면 안내 토스트."""
         self._usb = paths.usb_mounts() if self._can_copy else []

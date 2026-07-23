@@ -1,12 +1,13 @@
 """단일 창(MainWindow)과 시험 절차 진행(TestFlow)."""
 
+import os
 import json
 from datetime import datetime
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QMainWindow,
                              QStackedWidget, QApplication, QLineEdit,
                              QPushButton, QScrollArea)
-from PyQt6.QtCore import QObject, QTimer
+from PyQt6.QtCore import QObject, QTimer, QEvent
 
 from bdt import paths
 from bdt.widgets import StepHeader, confirm
@@ -20,6 +21,7 @@ from bdt.pages import (
     CalculationSummary,
     SettingsPage,
     ReportPage,
+    PastReportsPage,
 )
 from bdt import settings
 from bdt.keyboard import OnScreenKeyboard
@@ -38,6 +40,9 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("기밀성능 시험")
         # 측정이 진행 중인지 (TestFlow 가 갱신). 창 닫기 확인에 쓴다.
         self.measuring = False
+        # 키오스크(전체화면) 모드인지. BDT_WINDOWED=1 은 원격 확인용 창 모드다.
+        # 이 모드에서만 전체화면이 풀리면 자동으로 되돌린다 (아래 changeEvent).
+        self.kiosk = os.environ.get("BDT_WINDOWED") != "1"
 
         self.header = StepHeader()
         self.header.quit_button.clicked.connect(self._confirm_quit)
@@ -150,6 +155,29 @@ class MainWindow(QMainWindow):
             task.wait(5000)  # 워커가 팬을 세우고 빠져나올 시간
         event.accept()
 
+    def changeEvent(self, event):
+        """키오스크 모드에서 전체화면이 풀리면 자동으로 되돌린다.
+
+        전체화면 단말에는 창을 옮기거나 줄일 수단이 없다(데코레이션·작업표시줄
+        없음). 그런데 어떤 페이지가 순간적으로 화면보다 커지면 Qt 가 경고도 없이
+        전체화면을 풀어버리고, 그러면 창이 화면보다 넓어져 버튼이 화면 밖으로
+        밀린 채 작업자가 되돌릴 방법이 없었다. 상태가 전체화면에서 벗어나는
+        순간을 잡아 다음 틱에 다시 전체화면으로 건다 (풀린 원인 자체는 페이지
+        쪽에서 없앴지만 — ElidedLabel 등 — 만일을 대비한 마지막 안전망이다).
+        """
+        super().changeEvent(event)
+        if (event.type() == QEvent.Type.WindowStateChange
+                and self.kiosk and self.isVisible()
+                and not self.isFullScreen() and not self.isMinimized()):
+            # 즉시 showFullScreen 을 부르면 상태 전환 도중이라 씹힐 수 있어
+            # 다음 이벤트 루프 틱으로 미룬다. 살짝 지연을 둬, 만에 하나 정말로
+            # 화면보다 큰 페이지라도 CPU 를 태우는 빠른 반복이 되지 않게 한다.
+            QTimer.singleShot(150, self._restore_fullscreen)
+
+    def _restore_fullscreen(self):
+        if self.kiosk and self.isVisible() and not self.isFullScreen():
+            self.showFullScreen()
+
     def show_page(self, page, step=None):
         """페이지를 현재 화면으로 바꾸고, 이전 페이지는 정리한다."""
         previous = self.stack.currentWidget()
@@ -195,6 +223,7 @@ class TestFlow(QObject):
         page = InputInitialValues()
         page.saved.connect(self.on_conditions_saved)
         page.settings_requested.connect(self.show_settings)
+        page.reports_requested.connect(self.show_reports)
         self.window.show_page(page, step=0)
 
     def show_settings(self):
@@ -208,6 +237,17 @@ class TestFlow(QObject):
         # 시험이 진행 중인 것처럼 보인다. 복귀할 때 start() 가 되돌린다.
         self.window.header.set_steps(["설정"])
         page = SettingsPage()
+        page.closed.connect(self.start)
+        self.window.show_page(page, step=0)
+
+    def show_reports(self):
+        """이전 보고서 받기 — 닫으면 조건 입력으로 돌아온다.
+
+        시험 단계가 아니므로 설정과 같은 방식으로 헤더 단계를 바꾸고,
+        복귀는 start() 가 되돌린다.
+        """
+        self.window.header.set_steps(["이전 보고서"])
+        page = PastReportsPage()
         page.closed.connect(self.start)
         self.window.show_page(page, step=0)
 

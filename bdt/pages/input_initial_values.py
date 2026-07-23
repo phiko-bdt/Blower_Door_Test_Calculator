@@ -28,6 +28,7 @@ class InputInitialValues(QWidget):
     """시험 조건 입력 페이지."""
     saved = pyqtSignal()  # 조건 저장 완료 → 다음 단계로
     settings_requested = pyqtSignal()  # 설정 페이지로
+    reports_requested = pyqtSignal()  # 이전 보고서(폰 공유) 화면으로
 
     def __init__(self):
         super().__init__()
@@ -59,10 +60,17 @@ class InputInitialValues(QWidget):
         settings_button.setObjectName("Secondary")
         settings_button.setMinimumWidth(96)
         settings_button.clicked.connect(self.settings_requested.emit)
+        # 이전 보고서 — 시험을 새로 하지 않고 지난 성적서를 폰으로 받는다.
+        # 설정(기준값 편집)과는 다른 작업이라 별도 버튼으로 둔다.
+        reports_button = QPushButton("이전 보고서")
+        reports_button.setObjectName("Secondary")
+        reports_button.setMinimumWidth(120)
+        reports_button.clicked.connect(self.reports_requested.emit)
 
         # 상단 제목 — 성적서 헤더와 같은 처리 (제목 + 영문 부제 + 규격 + accent 룰)
         root.addWidget(PageHeader("기밀성능 시험", "Building Airtightness Test",
-                                  actions=[settings_button, save_button],
+                                  actions=[reports_button, settings_button,
+                                           save_button],
                                   show_standard=False))
 
         body = QWidget()

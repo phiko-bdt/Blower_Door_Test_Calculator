@@ -268,6 +268,37 @@ def main():
         check("최소에서 목표 도달 → 구간 없음으로 시험 불가",
               "impossible" in seen2 and "error" not in seen2)
 
+        # 팬 최대로 올려도 측정 하한에 못 미침(공간 과대·센서 오류) → 시험 불가.
+        # (사고: 0 Pa 근처인데 그대로 측정을 시작해 log(0) 로 터지거나 무의미한
+        #  성적서가 발행됨)
+        def max_saturated_low(**kw):
+            return (kw["duty_max"], False, 3.0, "max")
+
+        control.get_duty = max_saturated_low
+        t = tasks.BackgroundTask("depressurization")
+        seen3 = {}
+        t.impossible.connect(lambda m: seen3.setdefault("impossible", m))
+        t.error.connect(lambda m: seen3.setdefault("error", m))
+        t.run()
+        check("팬 최대에서 측정 하한 미달 → 시험 불가",
+              "impossible" in seen3 and "error" not in seen3,
+              seen3.get("impossible", "")[:40])
+
+        # 팬 최대에서 하한은 넘김(목표엔 미달) → 최대 세기로 측정을 진행한다
+        def max_saturated_ok(**kw):
+            return (kw["duty_max"], False, 45.0, "max")
+
+        control.get_duty = max_saturated_ok
+        t = tasks.BackgroundTask("depressurization")
+        swept_max = []
+        t.point.connect(lambda f, p, s, k: swept_max.append(p))
+        errs_max = []
+        t.error.connect(errs_max.append)
+        t.impossible.connect(errs_max.append)
+        t.run()
+        check("팬 최대·하한 이상 → 측정 진행",
+              not errs_max and len(swept_max) >= 5, f"{len(swept_max)}점")
+
         # 스윕 지점에 중복 duty 가 있으면 계산부가 N 을 부풀려 신뢰구간이 좁아진다
         pts = tasks.BackgroundTask._sweep_points(28, 21, 10)
         check("좁은 구간 스윕에 중복 없음",
@@ -375,7 +406,7 @@ def main():
         print("4-2. 전체화면 예산")
         from bdt.pages import (InputInitialValues, LivePressureData,
                                ProgressPage, ErrorPage, TargetingPage,
-                               SettingsPage as _SP)
+                               PastReportsPage, SettingsPage as _SP)
         probe = MainWindow()
         budget = 800 - probe.header.minimumSizeHint().height()
         pages = {
@@ -386,6 +417,7 @@ def main():
             "ErrorPage": ErrorPage("오류", "메시지"),
             "LiveMeasurementChart": LiveMeasurementChart("측정", num_fans=1),
             "TargetingPage": TargetingPage(),
+            "PastReportsPage": PastReportsPage(),
         }
         tall = {n: p.minimumSizeHint().height() for n, p in pages.items()
                 if p.minimumSizeHint().height() > budget}

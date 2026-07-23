@@ -104,36 +104,80 @@ windowRule(`serverDecoration="no"` `skipTaskbar="yes"`, 저장소 사본
   - 상한 이내면 → `_find_upper_duty` 로 상한을 넘지 않는 가장 높은 팬 세기를
     실측 탐색해 거기서부터 최저 지점까지 훑는다. **최대 duty 로 올려 훑지 말 것**
     — 압력이 이미 목표를 넘었는데 팬 세기를 더 높이는 정반대 처리다 (실제 있던 버그).
+- **팬 최대에서도 목표에 못 미치는 경우**의 처리 (위의 거울 상황):
+  - 도달 압력이 **측정 가능 하한**(`settings.min_pressure`, 기본 15 Pa)에 못
+    미치면 → `TestImpossible`. 공간이 지나치게 넓어 가감압이 안 되거나 압력
+    센서가 잘못 연결된(0 Pa 근처) 경우다. 그대로 두면 거의 0 Pa 인 점들로
+    회귀해 log(0) 로 터지거나 무의미한 성적서가 나온다 (경고 없이 측정을
+    시작하던 실제 버그). 하한은 목표보다 낮아야 한다(settings 가 검증·복구).
+  - 하한 이상이면 → 최대 duty 부터 최저 지점까지 정상 스윕한다.
 - **성적서 공유는 USB 복사 + 자체 핫스팟(AP) 웹**(둘 다 성적서 화면에서).
   USB 복사 버튼은 `/media/<user>/` 에 마운트된 USB 가 있을 때만 뜬다
   (`paths.usb_mounts`, 2초 폴링).
+  - **폰 공유 2단계 QR 은 공용 위젯 `pages/share_panel.SharePanel`**. 성적서
+    화면(`ReportPage`)과 시작 화면의 '이전 보고서'(`PastReportsPage`)가 같은
+    **갱신·상태 로직**(refresh)을 쓴다 — AP·자격증명·주소 계산이 갈리지 않게
+    한 곳에 둔다. **배치만 `wide` 로 분기**한다: 성적서 화면은 좁은 카드에 두
+    QR 을 세로로 쌓고(compact, QR 120px), 시작 화면은 전체 폭을 써 두 QR 을
+    좌우로 크게 벌린다(`wide=True`, QR 260px) — 폰으로 한쪽을 찍을 때 다른
+    QR 이 프레임에 같이 잡혀 겹치지 않게. 스스로 2초마다 AP·네트워크 상태를
+    보고 자신을 켜고 끄며(`available` 플래그·`state_changed` 시그널), 어느
+    망도 없으면 숨는다. 시작 화면은 숨을 때 '준비 안 됨' 안내를 대신 띄운다
+    (성적서 화면은 여백이라 그냥 숨김).
+  - **QR 흐름은 두 단계 수동**: ① WiFi 접속 QR(스캔→단말 AP 에 붙음) → ②
+    목록 주소 QR(붙은 뒤 스캔→성적서 목록). **캡티브 자동 열림에 기대지
+    않는다** — 그건 AP 에 인터넷 상단이 없고(납품) DNS 가로채기가 살아 있어야
+    작동하는데, 개발처럼 AP 가 wlan1 로 인터넷을 물면 폰 연결 확인이 그냥
+    성공해 캡티브가 안 뜬다. dnsmasq 드롭인·nftables(bdt-captive)는 남겨 두되
+    (납품 현장에선 도움), 화면 문구는 두 QR 을 명시적 단계로 안내한다.
+  - **'이전 보고서'는 시작 화면(조건 입력) 헤더 버튼**이다 — 시험을 새로
+    하지 않고 지난 성적서를 폰으로 받는 진입점. 설정(기준값 편집)과는 다른
+    작업이라 설정 안이 아니라 별도 버튼으로 뒀다(`reports_requested` →
+    `TestFlow.show_reports`, 닫으면 `start()` 로 복귀). 목록 자체는 `bdt.web`
+    이 서빙하는 바탕화면 `결과보고서` 폴더다.
   - **웹 공유 구조 = 단말이 AP**: 상시 AP `BlowerDoor-Test`(10.42.0.1)를
-    방송하고, 폰이 거기 붙어 받는다. AP 를 올리는 인터페이스는 구성에 따라
-    다르다(아래 '납품 vs 개발' 참조 — **개발 = wlan1, 납품 = wlan0**).
-    현재(개발) 구성: 전용 USB WiFi(**wlan1**, Realtek rtl8192cu)가 AP, 내장
-    wlan0 은 인터넷용(동시 구동 — AP 켜도 인터넷 안 끊김). 개발 중 **AP 는
-    반드시 wlan1 에 고정**(nmcli `connection.interface-name wlan1`)해야 한다 —
-    안 그러면 NM 이 wlan0 에 AP 를 올려 인터넷·원격이 끊긴다.
+    방송하고, 폰이 거기 붙어 받는다. **내장 wlan0 을 AP 전용으로 고정**한다
+    (개발·납품 공통). 내장 wlan0 은 기존 WiFi 를 잡지 않는다 — 인터넷은 개발
+    중엔 USB 동글(**wlan1**)이 별도 WiFi(예: song_home)에 붙어 대고, 납품
+    현장엔 인터넷이 없다. `bdt-share`(AP)는 `connection.interface-name wlan0`
+    autoconnect·priority 10 으로 wlan0 을 잡고, 내장이 client 로 붙던 옛
+    프로파일(`preconfigured`=hong_home 등)은 **autoconnect 를 꺼** wlan0 을
+    넘보지 않게 한다. 동글 쪽 client 프로파일은 `connection.interface-name
+    wlan1` 로 고정해 둔다. (이전 개발 구성은 반대로 wlan1 을 AP, wlan0 을
+    인터넷으로 썼으나, '내장은 핫스팟 전용' 으로 뒤집었다.)
+    - **주의**: wlan0 을 AP 로 올리면 내장 WiFi 인터넷이 끊기므로, 전환은
+      인터넷을 먼저 동글(wlan1)이나 유선(eth0)으로 옮긴 뒤에 한다. 원격
+      세션이 내장 wlan0 인터넷에 물려 있으면 그 세션도 끊긴다.
+    - **동글(rtl8192cu/RTL8188CUS) 개체차**: 같은 칩이라도 client(station)
+      스캔이 아예 안 되는 불량 개체가 있었다(`iw scan` 0 개, supplicant
+      `ssid-not-found` 로 association 실패). AP 는 되는데 client 가 안 되면
+      개체 불량이니 동글을 바꿔 본다. 또 이 동글은 2.4GHz 전용이라 5GHz
+      전용 WiFi(hong_home 등)에는 못 붙는다 — 2.4GHz AP(L385·song_home 등)를
+      쓴다. NM 에 저장된 hong_home 비번이 64 자면 그건 SSID 전용 원시 PSK 라
+      다른 AP 에 재사용해도 인증이 안 된다(평문 비번을 따로 입력해야 한다).
   - `bdt.web`(Flask, bdt-web.service, 포트 8080)이 바탕화면 `결과보고서` 를
     서빙. 성적서 화면 오른쪽에 **2단계 QR**: ① WiFi 접속 QR(`web.wifi_qr_payload`,
     SSID·비번을 NM 에서 읽음) → ② 다운로드 주소 QR(`web.base_url` 이 **AP IP
     10.42.0.1 우선**, 없으면 일반 LAN IP 폴백). QR 은 segno(apt: python3-segno),
     없어도 주소 텍스트로 폴백.
-  - **캡티브 포털**: ① 만 스캔해 AP 에 붙으면 성적서 목록이 자동으로 뜬다 —
-    dnsmasq 드롭인(`captive/dnsmasq-captive.conf`)이 AP 망의 모든 도메인을
-    10.42.0.1 로 답하고, `bdt-captive.service`(nftables, `captive/captive.nft`)가
-    AP 망 80→8080 을 리다이렉트해 폰의 '인터넷 확인' 요청이 성적서 목록으로
-    떨어진다. **② 는 그 자동 열림이 안 되는 폰을 위한 폴백**이며, 화면 캡션도
-    그렇게 적혀 있다("② 1번으로 목록이 안 열릴 때만"). 설치는 setup-hotspot.sh
-    가 한다.
-  - **납품 vs 개발 인터페이스**: 납품은 **내장 wlan0 을 AP** 로 쓴다(USB 동글은
-    뺀다). 현장엔 WiFi 가 없어 wlan0 은 인터넷에 안 물리고 AP 전용이며,
-    hong_home 같은 저장된 WiFi 도 현장엔 없어 wlan0 이 자연히 AP 가 된다.
-    개발 중에는 동글(wlan1)로 인터넷을 쓰므로 AP 를 wlan1 에 둔다(원격 세션이
-    wlan0 인터넷에 물려 있으면 AP 를 wlan0 으로 옮기다 세션이 끊긴다 — 콘솔
-    있을 때 하거나 인터넷을 먼저 다른 IF 로 옮길 것).
+  - **캡티브 포털(보조 수단, 항상 되진 않음)**: 조건이 맞으면 ① 로 AP 에 붙는
+    순간 성적서 목록이 자동으로 뜬다 — dnsmasq 드롭인(`captive/dnsmasq-captive.conf`)
+    이 AP 망의 모든 도메인을 10.42.0.1 로 답하고, `bdt-captive.service`(nftables,
+    `captive/captive.nft`)가 AP 망 80→8080 을 리다이렉트해 폰의 '인터넷 확인'
+    요청이 목록으로 떨어진다. **그러나 자동 열림은 보장되지 않는다**: (1) AP 에
+    인터넷 상단이 있으면(개발: wlan1) 폰 연결 확인이 그냥 성공해 캡티브가 안
+    뜬다, (2) 폰이 Private DNS(DoT/DoH)면 dnsmasq 가로채기를 우회한다, (3) NM
+    shared 의 dnsmasq 가 드롭인을 실제로 물었는지도 확인이 필요하다(옮긴 뒤
+    `dig @10.42.0.1 example.com` 이 10.42.0.1 을 답해야 정상). **그래서 UI 는
+    두 QR 을 명시적 단계로 안내하고 자동 열림에 의존하지 않는다.** 캡티브
+    설치는 setup-hotspot.sh 가 하고, 납품(인터넷 없는 현장)에선 도움이 된다.
+  - **납품 vs 개발 인터페이스**: **둘 다 내장 wlan0 을 AP 전용**으로 쓴다.
+    납품은 USB 동글을 빼 wlan0 만 있고 현장엔 WiFi 도 없어 순수 AP 전용이다.
+    개발은 동글(wlan1)을 꽂아 2.4GHz WiFi(song_home 등)로 인터넷을 대고 wlan0
+    은 여전히 AP 전용이다. 어느 쪽이든 내장이 기존 WiFi 를 잡지 않게 client
+    프로파일 autoconnect 를 꺼 둔다(위 '웹 공유 구조' 참조).
   - AP 설정은 `setup-hotspot.sh [인터페이스] [SSID] [비번]` 로 재현
-    (납품: `./setup-hotspot.sh wlan0`). 인터페이스를 반드시 고정한다.
+    (기본 `./setup-hotspot.sh wlan0`). 인터페이스를 반드시 고정한다.
     web.py 는 인터페이스 무관 — `bdt-share` 연결에서 SSID·IP·비번을 읽으므로
     wlan0/wlan1 어디에 묶든 그대로 동작한다.
   - LAN 전용·인증 없음(성적서에 의뢰자 정보) — AP 비번으로만 막는다.
@@ -192,6 +236,15 @@ windowRule(`serverDecoration="no"` `skipTaskbar="yes"`, 저장소 사본
   창틀과 작업표시줄이 그대로 남는다. 조건 입력 페이지가 최소 793 + 헤더 77 =
   870 > 800 이라 `stack.addWidget` 순간 풀렸다. 세로가 긴 페이지는 본문을
   QScrollArea 에 담아 최소 높이를 없앤다 (스모크가 페이지별 세로 예산을 검사).
+- **가로도 같다 — 최소 폭이 화면을 넘어도 전체화면이 풀린다.** 조절·측정 화면의
+  진행 문구는 `setWordWrap(False)` 한 줄인데, 일반 QLabel 은 그 경우 최소 폭이
+  텍스트 전체 폭이 된다. 목표 조절 중 "팬 세기를 최대로 높여도…확인하세요
+  (3/10초)" 같은 긴 안내가 오면 상단 바 최소 폭이 1280 을 넘어, 창이 화면보다
+  넓어지며 전체화면이 풀리고 버튼이 화면 밖으로 밀려 되돌릴 수 없었다. 이런
+  가변 길이 한 줄 라벨은 **`widgets.ElidedLabel`** 로 둔다 — 최소 폭을 0 으로
+  두고(레이아웃을 안 넓힘) 폭이 모자라면 끝을 …로 줄인다. 마지막 안전망으로
+  `MainWindow.changeEvent` 가 키오스크 모드에서 전체화면이 풀리면 다음 틱에
+  다시 `showFullScreen` 한다 (원인은 라벨 쪽에서 없앴지만 만일 대비).
 - PyQt6 (apt 판)에는 **wayland 플랫폼 플러그인이 없다** — XWayland(xcb)로 뜬다.
   "Could not find the Qt platform plugin wayland" 로그는 정상이며, 전체화면·
   터치·차트 모두 xcb 에서 동작한다.

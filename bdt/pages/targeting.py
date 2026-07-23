@@ -30,7 +30,7 @@ from PyQt6.QtCharts import QChart, QChartView, QLineSeries, QAreaSeries, QValueA
 from PyQt6.QtGui import QFont, QColor, QPen, QBrush, QPainter
 
 from bdt import theme
-from bdt.widgets import confirm
+from bdt.widgets import confirm, ElidedLabel
 from bdt.scale import nice_step
 
 
@@ -56,11 +56,12 @@ class TargetingPage(QWidget):
         # ── 상단: 메시지(좌) + 압력/팬 세기/유지 타일 + 중단 버튼(우) ──
         self.message_label = QLabel(initial_message)
         self.message_label.setObjectName("Message")
-        self.progress = QLabel("팬 세기를 조절하고 있습니다…")
-        self.progress.setObjectName("Hint")
         # 한 줄로 둔다 — 두 줄로 접히면 상단이 그만큼 높아진다 (측정 화면과
-        # 같은 결). 넘치면 끝을 …로 자른다.
-        self.progress.setWordWrap(False)
+        # 같은 결). 문구가 길어지면 끝을 …로 줄인다. 일반 QLabel(wordWrap 끔)은
+        # 최소 폭이 문구 전체 폭이라, 긴 안내가 오면 상단 바가 화면보다 넓어져
+        # 전체화면이 풀린다 — ElidedLabel 이 그 최소 폭을 없앤다.
+        self.progress = ElidedLabel("팬 세기를 조절하고 있습니다…")
+        self.progress.setObjectName("Hint")
         head = QVBoxLayout()
         head.setSpacing(4)
         head.addWidget(self.message_label)

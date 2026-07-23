@@ -9,9 +9,63 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QDialog,
 )
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QSize
 
 from bdt.theme import STANDARD_NAME, STANDARD_NOTE
+
+
+class ElidedLabel(QLabel):
+    """긴 문구가 와도 레이아웃을 넓히지 않는 한 줄 라벨.
+
+    보통 QLabel 은 setWordWrap(False) 이면 최소 폭이 텍스트 전체 폭이 된다.
+    상단 진행 문구처럼 길이가 들쭉날쭉한 라벨이 그러면, 문구 하나가 길어지는
+    순간 그 라벨을 담은 상단 바의 최소 폭이 화면(1280)을 넘어 창이 화면보다
+    넓어지고 — 그때 Qt 가 전체화면을 조용히 푼다. 데코레이션이 없는 키오스크
+    단말에선 창을 줄이거나 되돌릴 수단이 없어 버튼이 화면 밖으로 밀린 채 갇힌다
+    (목표 압력 조절 중 긴 안내 문구가 뜰 때 실제로 겪었다).
+
+    이 라벨은 **최소 폭을 두지 않고**(레이아웃을 넓히지 않음), 선호 폭은 전체
+    텍스트 폭 그대로 둔다(자리가 있으면 다 보여줌). 폭이 모자라면 그때만 끝을
+    …로 줄여 그린다. QLabel 자체 그리기를 그대로 쓰므로 스타일시트 색·여백은
+    영향받지 않는다.
+    """
+
+    def __init__(self, text="", parent=None):
+        super().__init__(parent)
+        self._full = ""
+        self.setText(text)
+
+    def setText(self, text):
+        self._full = text or ""
+        self._apply_elide()
+
+    def text(self):
+        return self._full
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._apply_elide()
+
+    def _apply_elide(self):
+        width = self.width()
+        if width <= 0:
+            shown = self._full
+        else:
+            shown = self.fontMetrics().elidedText(
+                self._full, Qt.TextElideMode.ElideRight, width)
+        # QLabel 의 실제 텍스트만 줄인다 — sizeHint 는 전체 폭으로 따로 돌려주므로
+        # (아래) 줄인 텍스트가 다시 폭을 좁히는 되먹임은 생기지 않는다.
+        super().setText(shown)
+
+    def sizeHint(self):
+        base = super().sizeHint()
+        return QSize(self.fontMetrics().horizontalAdvance(self._full),
+                     base.height())
+
+    def minimumSizeHint(self):
+        # 세로 높이만 확보하고 가로 최소는 0 으로 둔다 — 이 라벨이 상단 바를
+        # 화면보다 넓게 밀어 전체화면을 풀어버리지 않게 하는 핵심이다.
+        return QSize(0, super().minimumSizeHint().height())
 
 
 class Dialog(QDialog):

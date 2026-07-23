@@ -33,6 +33,10 @@ DEFAULTS = {
     # 시험을 진행할 수 있는 압력 상한. 팬 세기를 최소로 낮춰도 이보다 높으면
     # 압력을 제어할 수 없으므로 시험 불가로 본다.
     "max_pressure": 100.0,
+    # 시험을 진행할 수 있는 압력 하한. 팬 세기를 최대로 높여도 이보다 낮으면
+    # (공간이 지나치게 넓어 가감압이 안 되거나 압력 센서가 잘못 연결된 경우)
+    # 측정할 압력 구간 자체가 없으므로 시험 불가로 본다. 목표보다 낮아야 한다.
+    "min_pressure": 15.0,
     # 조절 화면 압력·수렴 판정에 쓰는 이동평균 점수 (0.1초 간격 → 20점 ≈ 2초).
     # 크게 잡으면 매끄럽지만 불안정을 늦게 감지하고, 1 이면 평활 없이 원시값.
     "smooth_window": 20,
@@ -55,6 +59,7 @@ FIELDS = [
      "수렴 판정 폭 (70 Pa 의 10% → ±7 Pa)"),
     ("hold_seconds", "수렴 유지 시간", "초", "허용 오차 안에 머물 연속 시간"),
     ("max_pressure", "시험 가능 상한", "Pa", "넘으면 시험 불가로 판정"),
+    ("min_pressure", "측정 가능 하한", "Pa", "팬 최대에서 못 미치면 시험 불가"),
     ("smooth_window", "압력 평활 창", "점", "조절 압력·수렴 판정 이동평균 표본 수"),
     ("measure_seconds", "지점 측정 시간", "초", "측정 지점당 압력 평균 시간"),
     ("settle_seconds_per_duty", "안정화 대기", "초/duty",
@@ -69,6 +74,7 @@ LIMITS = {
     "tolerance_percent": (1.0, 50.0),
     "hold_seconds": (1.0, 120.0),
     "max_pressure": (10.0, 500.0),
+    "min_pressure": (1.0, 90.0),
     "smooth_window": (1, 60),
     "measure_seconds": (1.0, 120.0),
     "settle_seconds_per_duty": (0.0, 30.0),
@@ -110,6 +116,11 @@ def load():
     if values["max_pressure"] <= values["target_pressure"]:
         values["max_pressure"] = max(DEFAULTS["max_pressure"],
                                      values["target_pressure"] + 10.0)
+    # 측정 하한이 목표 이상이면, 팬 최대로 목표에 도달한 정상 시험까지 '시험
+    # 불가'가 된다 (도달 압력 ≈ 목표 < 하한). 목표 아래로 되돌린다.
+    if values["min_pressure"] >= values["target_pressure"]:
+        values["min_pressure"] = min(DEFAULTS["min_pressure"],
+                                     values["target_pressure"] / 2.0)
     return values
 
 
@@ -141,6 +152,12 @@ def validate(values):
         raise ValueError(
             f"시험 가능 상한({clean['max_pressure']:g} Pa)은 목표 압력"
             f"({clean['target_pressure']:g} Pa)보다 높아야 합니다.")
+    # 측정 가능 하한은 목표보다 낮아야 한다 — 그래야 팬 최대로 목표에 닿은
+    # 정상 시험이 하한에 걸리지 않는다.
+    if clean["min_pressure"] >= clean["target_pressure"]:
+        raise ValueError(
+            f"측정 가능 하한({clean['min_pressure']:g} Pa)은 목표 압력"
+            f"({clean['target_pressure']:g} Pa)보다 낮아야 합니다.")
     return clean
 
 

@@ -106,8 +106,9 @@ class SettingsPage(QWidget):
         grid.setContentsMargins(28, 16, 28, 16)
         grid.setHorizontalSpacing(20)
         grid.setVerticalSpacing(12)
-        # 9개 항목을 3×3 으로 앉힌다 (한 필드 = 이름·설명 묶음 + 입력칸, 두 열
-        # 차지). 3행이라 세로가 짧아 팬 보정식·버튼까지 한 화면에 들어온다.
+        # 측정 기준 항목을 3열로 앉힌다 (한 필드 = 이름·설명 묶음 + 입력칸, 두
+        # 열 차지). 항목이 늘면 행이 늘지만 본문이 QScrollArea 라 넘치면 스크롤로
+        # 흡수한다 — 페이지가 화면보다 커져 전체화면이 풀리지는 않는다.
         for c in (0, 2, 4):
             grid.setColumnStretch(c, 1)
 

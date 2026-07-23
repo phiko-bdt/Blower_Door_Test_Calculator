@@ -325,6 +325,7 @@ class BackgroundTask(QThread):
         num_to_measure = int(cfg["num_points"])
         low_warn = cfg["low_pressure_warn"]
         max_pressure = cfg["max_pressure"]
+        min_pressure = cfg["min_pressure"]
 
         with open(paths.CONDITIONS_JSON, 'r') as f:
             conditions = json.load(f)
@@ -424,6 +425,19 @@ class BackgroundTask(QThread):
             self.report(f"팬 세기 {lowest_duty}~{duty}% 구간에서 측정을 진행합니다")
         else:
             # 목표 압력 도달 실패 = 누기량/침기량 대비 압력형성을 위한 풍량 부족.
+            # 다만 팬을 최대로 올려도 압력이 측정 하한에도 못 미치면, 훑을 압력
+            # 구간 자체가 없다 — 공간이 지나치게 넓어 가감압이 안 되거나 압력
+            # 센서가 잘못 연결된(0 Pa 근처) 경우다. 그대로 진행하면 거의 0 Pa
+            # 인 점들로 회귀해 log(0) 로 터지거나 무의미한 성적서가 나온다.
+            # 장비 오류와 구분해 '시험 불가'로 알린다.
+            if abs(pressure) < min_pressure:
+                raise TestImpossible(
+                    f"팬 세기를 최대({max_duty}%)로 높여도 압력이 "
+                    f"{abs(pressure):.1f} Pa 로 측정 가능한 최소 압력"
+                    f"({min_pressure:.0f} Pa)에 못 미칩니다.\n\n"
+                    "공간이 지나치게 넓어 팬으로 가감압이 되지 않거나, 압력 "
+                    "센서의 연결·설치(호스 방향·측정 위치)가 잘못됐을 수 "
+                    "있습니다. 센서와 팬 설치를 확인하고 다시 시도하세요.")
             # 최대 duty 부터 min duty 전까지 훑는다.
             self.report(f"{target:.0f} Pa 도달 실패 — "
                         f"최대 팬 세기({max_duty}%)로 측정을 진행합니다")

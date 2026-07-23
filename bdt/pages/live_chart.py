@@ -21,7 +21,7 @@ from PyQt6.QtCharts import (
 from PyQt6.QtGui import QFont, QColor, QPen, QBrush, QPainter
 
 from bdt import theme
-from bdt.widgets import confirm
+from bdt.widgets import confirm, ElidedLabel
 
 
 class LiveMeasurementChart(QWidget):
@@ -98,9 +98,10 @@ class LiveMeasurementChart(QWidget):
         self.label.setObjectName("Message")
         # 작업 진행 상황을 실시간으로 보여준다 (set_progress 로 갱신)
         # 한 줄로 둔다 — 아래 막대와 나란히 놓아 상단을 두 줄로 압축한다.
-        self.progress = QLabel("잠시만 기다려 주세요…")
+        # ElidedLabel: 긴 측정 문구가 와도 상단 바를 화면보다 넓히지 않는다
+        # (일반 QLabel 은 최소 폭이 문구 전체 폭이라 전체화면이 풀렸다).
+        self.progress = ElidedLabel("잠시만 기다려 주세요…")
         self.progress.setObjectName("Hint")
-        self.progress.setWordWrap(False)
 
         # 끝이 정해진 일(안정화 대기·측정)의 남은 시간. 문구만으론 숫자가
         # 줄지 않아 멈춘 건지 기다리는 건지 알 수 없었다. 남은 초는 progress
