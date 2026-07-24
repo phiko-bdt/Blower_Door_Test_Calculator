@@ -257,10 +257,17 @@ def save_fan_coefficients(cover_values, cover=FAN_COVER):
 
     data = {}
     if os.path.exists(paths.FAN_COEFFICIENTS_JSON):
-        with open(paths.FAN_COEFFICIENTS_JSON, "r") as f:
-            data = json.load(f)
-        if not isinstance(data, dict):
-            raise ValueError("팬 계수 파일 형식이 올바르지 않습니다.")
+        # 손상된 파일이면 빈 상태에서 새로 쓴다 — load()가 corruption 을
+        # 기본값으로 폴백하는 것과 같은 정책. 여기서 예외를 올리면 설정
+        # 화면의 저장(=복구 수단)이 매번 같은 이유로 실패해, 터미널 없는
+        # 키오스크에서 팬 재보정이 영구히 막힌다.
+        try:
+            with open(paths.FAN_COEFFICIENTS_JSON, "r") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                data = {}
+        except (json.JSONDecodeError, OSError):
+            data = {}
 
     entry = dict(data.get(cover, {}))
     entry.update(clean)

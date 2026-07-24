@@ -153,6 +153,15 @@ class MainWindow(QMainWindow):
                 return
             task.cancel()
             task.wait(5000)  # 워커가 팬을 세우고 빠져나올 시간
+        # USB 복사 스레드(_UsbCopyTask, 창을 부모로 둠)도 마저 기다린다 —
+        # 느린 USB 에서 복사가 수 초 걸리는 동안 종료하면, 인터프리터 종료
+        # 시 실행 중 QThread 파괴로 abort(SIGABRT)돼 재시작 루프가 앱을
+        # 되살린다(작업자가 끄려던 앱이 재실행). 복사를 끝까지 기다리는 게
+        # 파일 안전(sync)에도 맞다.
+        from bdt.pages.report_view import _UsbCopyTask
+        for t in self.findChildren(_UsbCopyTask):
+            if t.isRunning():
+                t.wait(15000)  # copy2 + os.sync 가 느린 USB 에서 걸리는 시간
         event.accept()
 
     def changeEvent(self, event):

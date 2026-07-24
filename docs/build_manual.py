@@ -30,8 +30,16 @@ OUT = os.path.join(HERE, "manual.pdf")
 FONT_DIR = "/usr/share/fonts/truetype/nanum"
 
 # ── 폰트 등록 (나눔고딕: 한글 + ㎥/㎡ 등 포함) ─────────────────
-pdfmetrics.registerFont(TTFont("Nanum", f"{FONT_DIR}/NanumGothic.ttf"))
-pdfmetrics.registerFont(TTFont("Nanum-B", f"{FONT_DIR}/NanumGothicBold.ttf"))
+# 시스템 fonts-nanum(권장, install_deps_apt.sh 가 설치)이 없으면 저장소에
+# 포함된 NanumSquare 한 벌로 폴백한다 — 굵기 구분은 잃지만 클론만으로도
+# 설명서 재생성이 되게.
+_regular = f"{FONT_DIR}/NanumGothic.ttf"
+_bold = f"{FONT_DIR}/NanumGothicBold.ttf"
+if not (os.path.exists(_regular) and os.path.exists(_bold)):
+    _repo_font = os.path.join(ROOT, "NanumSquare_acL.ttf")
+    _regular = _bold = _repo_font
+pdfmetrics.registerFont(TTFont("Nanum", _regular))
+pdfmetrics.registerFont(TTFont("Nanum-B", _bold))
 pdfmetrics.registerFontFamily("Nanum", normal="Nanum", bold="Nanum-B",
                               italic="Nanum", boldItalic="Nanum-B")
 

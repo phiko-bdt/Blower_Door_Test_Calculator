@@ -47,10 +47,15 @@ def usb_mounts():
     마운트 해제된 잔여 디렉터리는 제외). 성적서 화면이 이걸로 'USB로 복사'
     버튼을 띄울지 정한다.
     """
-    if not os.path.isdir(MEDIA_DIR):
+    # isdir 확인과 listdir 사이에 디렉터리가 사라질 수 있다(USB 탈거 등).
+    # 이 함수는 성적서 화면의 2초 폴링 슬롯에서 돌므로, 예외가 새면 앱이
+    # 통째로 죽는다 — 빈 목록 폴백이 맞다.
+    try:
+        names = sorted(os.listdir(MEDIA_DIR))
+    except OSError:
         return []
     found = []
-    for name in sorted(os.listdir(MEDIA_DIR)):
+    for name in names:
         path = os.path.join(MEDIA_DIR, name)
         try:
             if os.path.ismount(path):
