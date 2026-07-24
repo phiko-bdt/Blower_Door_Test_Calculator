@@ -26,6 +26,7 @@ from reportlab.platypus import (
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 SCREENS = os.path.join(HERE, "screens")
+IMAGES = os.path.join(HERE, "images")  # 현장 촬영 사진(장비·연결선·폰 화면)
 OUT = os.path.join(HERE, "manual.pdf")
 FONT_DIR = "/usr/share/fonts/truetype/nanum"
 
@@ -169,13 +170,14 @@ WTAG = "#b45309"
 NTAG = "#1f5fa8"
 
 
-def screenshot(fname, caption, width_mm=155, root=False):
+def screenshot(fname, caption, width_mm=155, root=False, base=None):
     """실제 앱 화면 캡처를 테두리·캡션과 함께 넣는다.
 
     반환은 플로어블 리스트(EXT 로 붙인다). 파일이 없으면 조용히 건너뛴다
-    (capture_screens.py 를 안 돌렸을 때도 build 는 되게).
+    (capture_screens.py 를 안 돌렸을 때도 build 는 되게). base 를 주면 해당
+    폴더에서 읽는다(현장 촬영 사진은 photo() 로 IMAGES 를 가리킴).
     """
-    path = os.path.join(ROOT if root else SCREENS, fname)
+    path = os.path.join(base or (ROOT if root else SCREENS), fname)
     if not os.path.exists(path):
         return [P(f'<font color="#8a94a0">[화면: {caption} — 캡처 파일 없음]'
                   f'</font>', "small")]
@@ -196,6 +198,51 @@ def screenshot(fname, caption, width_mm=155, root=False):
     cap.alignment = 1  # center
     grp = KeepTogether([box, Spacer(1, 3), cap])
     return [Spacer(1, 5), grp, Spacer(1, 8)]
+
+
+def photo(fname, caption, width_mm=150):
+    """현장 촬영 사진(docs/images)을 테두리·캡션과 함께 넣는다."""
+    return screenshot(fname, caption, width_mm=width_mm, base=IMAGES)
+
+
+def photo_pair(specs, width_mm=75):
+    """사진 두 장을 한 줄에 가로로 나란히 넣는다(세로 긴 폰 화면용).
+
+    specs=[(fname, caption), (fname, caption)]. 각 칸은 테두리 이미지 위에
+    캡션을 세로로 쌓고, 바깥 2열 표로 좌우 배치한다. 통째로 한 페이지에
+    유지(KeepTogether)해 두 화면이 갈라지지 않게 한다.
+    """
+    cols = []
+    for fname, caption in specs:
+        path = os.path.join(IMAGES, fname)
+        if not os.path.exists(path):
+            cols.append([P(f'<font color="#8a94a0">[사진: {caption} — 파일 '
+                           f'없음]</font>', "small")])
+            continue
+        iw, ih = ImageReader(path).getSize()
+        w = width_mm * mm
+        img = RLImage(path, width=w, height=w * ih / iw)
+        box = Table([[img]], colWidths=[w])
+        box.setStyle(TableStyle([
+            ("BOX", (0, 0), (-1, -1), 0.6, LINE),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        box.hAlign = "CENTER"
+        cap = P(f'<font color="#5b6672">▲ {caption}</font>', "small")
+        cap.alignment = 1
+        cols.append([box, Spacer(1, 3), cap])
+    outer = Table([cols], colWidths=[85 * mm, 85 * mm])
+    outer.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    return [Spacer(1, 5), KeepTogether([outer]), Spacer(1, 8)]
 
 
 def ch(title):
@@ -224,6 +271,9 @@ def build():
 
     A(P("0. 기밀 시험 장비 구성", "h2"))
     A(P("이 장비는 아래 세 부분으로 구성됩니다."))
+    EXT(photo("items.png", "장비 구성 한눈에 — 팬 모듈·전원선·팬 커버·압력 측정 "
+              "관·제어 모듈, 그리고 제어 모듈에서 나오는 팬 전원선(적·흑)·PWM "
+              "선(황)·압력 측정 관(청)", width_mm=155))
     A(info_table([
         ("제어 모듈", "전원공급부, 압력센서, 컴퓨터, 터치스크린을 담은 "
          "인클로저(제어기). 시험을 조작하고 성적서를 발행하는 본체입니다."),
@@ -253,6 +303,9 @@ def build():
         f'{b("가압·감압 시험 시 팬 방향")}에 주의하세요.',
         f'{b("건물 상태")}: 창문·문을 규정대로 닫고 시험 조건을 맞춥니다.',
     ]))
+    EXT(photo("control-module-side.png", "제어 모듈 측면 — 왼쪽 냉각팬, 오른쪽 "
+              "위 압력 측정 포트(청), 그 아래 전원 인렛과 전원 스위치(‒O)로 "
+              "전원선(적·흑)·PWM선(황)·측정관(청)이 들어갑니다", width_mm=140))
     A(callout("danger",
       f'{tag("경고 — 팬 전원을 켜는 순서", DTAG)}<br/>'
       f'{b("앱이 실행된 상태에서 PWM 신호선(황)을 먼저 연결한 뒤")} 팬 전원을 '
@@ -263,6 +316,7 @@ def build():
       f'{tag("주의 — 팬", WTAG)} &nbsp; 화면에서 팬 세기가 0보다 커지면 '
       f'{b("실제로 팬이 돕니다")}. 손·옷·이물질이 팬에 닿지 않도록 하세요. '
       f'팬 세기 0은 항상 안전합니다.'))
+    A(PageBreak())
     A(P("앱 실행", "h3"))
     EXT(bullets([
         f'전원을 켜면 부팅 후 앱이 {b("자동으로 전체화면")}으로 열립니다. 앱을 '
@@ -270,6 +324,12 @@ def build():
         f'{btn("Execute")} 버튼).',
         f'{b("앱 종료는 화면 오른쪽 위")} {btn("종료")} 버튼입니다(창 테두리가 '
         f'없어 이 버튼이 유일한 방법).',
+    ]))
+    EXT(photo_pair([
+        ("control-module.png", "제어 모듈을 열면 뚜껑에 터치스크린(첫 화면), 왼쪽에 "
+         "압력센서 표시기가 보입니다"),
+        ("desktop.png", "앱 종료 시 바탕화면 — [BlowerDoorTest] 아이콘으로 다시 "
+         "실행, 성적서는 [결과보고서] 폴더에 쌓입니다"),
     ]))
     A(P("장비 종료", "h3"))
     A(P("장비를 끌 때는 아래 순서대로 전원을 차단하세요."))
@@ -402,6 +462,12 @@ def build():
         f'{b("② 목록 열기 QR")}: 연결된 뒤 스캔하면 성적서 목록 페이지가 '
         f'열립니다. 목록에서 {b("「받기」")}를 누르면 스마트폰에 저장됩니다.',
     ], start=1)])
+    EXT(photo_pair([
+        ("wifi-connection.jpg", "① 스캔 후 — 스마트폰이 단말 WiFi"
+         "(BlowerDoor-Test)에 붙은 모습. 「인터넷에 연결되어 있지 않음」은 정상"),
+        ("report-download-page.jpg", "② 접속 후 — 성적서 목록. 「받기」로 방금 "
+         "시험한 성적서를, 「이전 시험 성적서 보기」로 지난 성적서를 받습니다"),
+    ]))
     A(callout("note",
       f'{tag("수동 연결", NTAG)} &nbsp; ① QR이 잘 안 되면, 스마트폰 WiFi 설정에서 직접 '
       f'{b("BlowerDoor-Test")}에 붙습니다(비밀번호는 ① QR 아래에 표시됩니다). '
